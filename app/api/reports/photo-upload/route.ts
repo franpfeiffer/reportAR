@@ -14,7 +14,13 @@ export async function POST(request: Request) {
         try { payload = JSON.parse(clientPayload || "null"); } catch { payload = null; }
         if (!isRecord(payload) || !await canUploadPhoto(payload.reportId, payload.token)) throw new Error("No se puede adjuntar la foto a este reporte.");
         if (typeof payload.reportId !== "string" || !pathname.startsWith(`reports/${payload.reportId}/`) || pathname.length > 220) throw new Error("El nombre de la foto no es válido.");
-        return { maximumSizeInBytes: MAX_PHOTO_BYTES, validUntil: Date.now() + 10 * 60_000, addRandomSuffix: false };
+        return {
+          maximumSizeInBytes: MAX_PHOTO_BYTES,
+          validUntil: Date.now() + 10 * 60_000,
+          addRandomSuffix: false,
+          // n8n retries the same pathname if the upload response is lost.
+          ...(payload.client === "n8n" ? { allowOverwrite: true } : {}),
+        };
       },
     });
     return Response.json(response);

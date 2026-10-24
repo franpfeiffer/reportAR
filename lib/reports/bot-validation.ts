@@ -4,6 +4,8 @@ const categories = { bache: "BACHE", inundacion: "INUNDACION", alumbrado: "ALUMB
 export function parseBotReport(value: unknown, key: string | null) {
   if (!isRecord(value) || value.source !== "telegram") throw new ValidationError("invalid_report");
   const { external_id, category, description, address, reporter, photo, reported_at } = value;
+  if ((value.expectsPhoto !== undefined && typeof value.expectsPhoto !== "boolean") ||
+      (value.expectsPhoto === true && photo != null)) throw new ValidationError("invalid_report");
   if (typeof external_id !== "string" || !/^telegram:-?\d+:\d+$/.test(external_id) || external_id.length > 150 ||
       typeof category !== "string" || !Object.hasOwn(categories, category) ||
       typeof description !== "string" || description.trim().length < 10 || description.length > 2000 ||
@@ -18,5 +20,5 @@ export function parseBotReport(value: unknown, key: string | null) {
   if (key !== external_id) throw new ValidationError("invalid_idempotency_key");
   return { externalId: external_id, category: categories[category as keyof typeof categories], description: description.trim(), address: address.trim(),
     telegramUserId: reporter.telegram_user_id, telegramChatId: reporter.telegram_chat_id,
-    telegramFileId: isRecord(photo) ? photo.telegram_file_id as string : null, reportedAt: new Date(reported_at), source: "TELEGRAM" };
+    telegramFileId: isRecord(photo) ? photo.telegram_file_id as string : null, reportedAt: new Date(reported_at), source: "TELEGRAM", expectsPhoto: value.expectsPhoto === true };
 }

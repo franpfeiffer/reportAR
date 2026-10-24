@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node src/mock-api.js",
     "build:workflow": "node scripts/build-workflow.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:form-workflow": "node scripts/build-form-workflow.js"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }

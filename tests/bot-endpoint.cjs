@@ -17,7 +17,7 @@ const parsed=bot.parseBotReport(payload,payload.external_id);
 assert.equal(parsed.category,'INUNDACION');assert.equal(parsed.telegramFileId,'large-photo');
 assert.equal(bot.parseBotReport({...payload,category:'arbolado'},payload.external_id).category,'ARBOLADO');
 for(const bad of [{...payload,description:'corto'},{...payload,category:'unknown'},{...payload,photo:{}},{...payload,reported_at:'invalid'},{...payload,reporter:{telegram_user_id:'456',telegram_chat_id:'999'}}]) assert.throws(()=>bot.parseBotReport(bad,payload.external_id));
-const schema={citizenReports:{externalId:'externalId',publicId:'publicId',telegramFileId:'telegramFileId',photoStorageKey:'photoStorageKey',photoContentType:'photoContentType',photoFilename:'photoFilename',updatedAt:'updatedAt'}};
+const schema={citizenReports:Object.fromEntries(['externalId','publicId','telegramFileId','photoStorageKey','photoUrl','photoUploadTokenHash','photoContentType','photoFilename','updatedAt'].map(key=>[key,key]))};
 const reports=new Map();
 const idFor=number=>`12345678-1234-4123-8123-${String(number).padStart(12,'0')}`;
 let nextId=1;
@@ -35,12 +35,12 @@ const db={
   const row=Array.from(reports.values()).find(entry=>conditionMatches(entry,condition));
   return row?[pick(row,projection)]:[];
  }})})}),
- insert:()=>({values:values=>({onConflictDoNothing:()=>({returning:async()=>{
+ insert:()=>({values:values=>({onConflictDoNothing:()=>({returning:async projection=>{
   insertCalls++;
   if(reports.has(values.externalId))return [];
   const id=idFor(nextId++);
   reports.set(values.externalId,{...values,publicId:id});
-  return [{id}];
+  return [pick(reports.get(values.externalId),projection)];
  }})})}),
  update:()=>({set:values=>{
   let updated;
@@ -84,6 +84,26 @@ async function send(body=payload,extra={}){return route.POST(new Request('http:/
  assert.deepEqual(concurrentResponses.map(response=>response.status).sort(),[200,201]);
  assert.equal(concurrentBodies[0].id,concurrentBodies[1].id);assert.equal(concurrentBodies[0].photo_status,'stored');assert.equal(concurrentBodies[1].photo_status,'stored');
  assert.equal(reports.has(concurrent.external_id),true);assert.equal(insertCalls,5);assert.equal(classifierCalls,4);
+ // The form uses the same Blob capability as the web, never Telegram/S3.
+ const callsBeforeBlob=photoStorageCalls;
+ const blobPayload={...noPhoto,external_id:'telegram:125:46',expectsPhoto:true};
+ const blobCreated=await send(blobPayload);const blobBody=await blobCreated.json();
+ assert.equal(blobCreated.status,201);assert.equal(blobBody.status,'received');assert.equal(blobBody.photo_status,'pending');
+ assert.match(blobBody.photoUploadToken,/^[a-f0-9]{64}$/);
+ const blobRow=reports.get(blobPayload.external_id);
+ assert.equal(blobRow.photoUploadTokenHash,require('node:crypto').createHash('sha256').update(blobBody.photoUploadToken).digest('hex'));
+ assert.equal(blobRow.expectsPhoto,undefined);
+ const again=await send(blobPayload);assert.equal(again.status,200);assert.deepEqual(await again.json(),blobBody);
+ assert.equal(photoStorageCalls,callsBeforeBlob);
+ // Lost attach response: retrying creation discovers the existing photo and
+ // never recreates the consumed capability or overwrites the report.
+ blobRow.photoUrl=`https://store.public.blob.vercel-storage.com/reports/${blobBody.id}/foto.heic`;
+ blobRow.photoUploadTokenHash=null;
+ const attached=await send(blobPayload);assert.deepEqual(await attached.json(),{id:blobBody.id,status:'received',photo_status:'stored'});
+ assert.equal(blobRow.photoUploadTokenHash,null);
+ assert.equal(photoStorageCalls,callsBeforeBlob);
+ assert.equal((await send({...noPhoto,expectsPhoto:'true'})).status,422);
+ assert.equal((await send({...payload,expectsPhoto:true})).status,422);
  delete process.env.REPORTS_API_TOKEN;assert.equal((await send()).status,503);
  console.log('Validation + endpoint tests passed (auth, limits, create, duplicate, concurrent idempotency, photo retry, text-only)');
 })().catch(e=>{console.error(e);process.exitCode=1});

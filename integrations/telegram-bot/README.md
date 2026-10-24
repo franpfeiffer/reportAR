@@ -1,5 +1,7 @@
 # Bot municipal · MVP n8n
 
+La variante actual con formulario para Argentina y fotos en el mismo Vercel Blob de la web está en [n8n/reportes-formulario-demo.json](n8n/reportes-formulario-demo.json). Ver [configuración y cambios de backend requeridos](n8n/FORMULARIO-DEMO.md). Se entrega inactiva; los flujos de plantilla de abajo se conservan como variantes anteriores.
+
 ## Levantar n8n local con Docker (Ubuntu)
 
 ```sh

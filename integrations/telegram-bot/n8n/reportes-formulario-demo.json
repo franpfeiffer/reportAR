@@ -1,0 +1,1248 @@
+{
+  "name": "ReportAR · Argentina · Formulario n8n",
+  "active": false,
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "webhookId": "reportar-formulario-demo"
+    },
+    {
+      "id": "prepare",
+      "name": "Preparar formulario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function prepareForm(update) {\n  const m = update.message;\n  if (!m || m.chat?.type !== 'private' || m.from?.is_bot) return { action: 'ignore' };\n  const chat_id = String(m.chat.id);\n  return {\n    action: 'form', chat_id,\n    context: { chat_id, user_id: String(m.from.id), message_id: String(m.message_id), reported_at: new Date(m.date * 1000).toISOString() },\n    welcome: '👋 ¡Hola! Podés reportar un problema en cualquier localidad de Argentina. Tocá «Completar reclamo»: elegí la provincia, escribí la localidad y completá los datos. La foto es opcional.\\n\\nAl enviar el formulario, volvé a este chat para recibir la confirmación y el número.',\n  };\n}\nreturn $input.all().map((item, i) => ({ json: prepareForm(item.json), pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "open",
+      "name": "¿Abrir formulario?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"form\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "reply-check",
+      "name": "¿Responder mensaje?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"reply\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "provinces-http",
+      "name": "Cargar provincias de reportAR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        -120
+      ],
+      "parameters": {
+        "url": "https://reportar-one.vercel.app/api/geography/provinces",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "provinces",
+      "name": "Preparar provincias",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "function prepareProvinces(response, prepared) {\n  const provinces = response.statusCode === 200 && Array.isArray(response.body?.provinces)\n    ? response.body.provinces.filter(p => p && typeof p.id === 'string' && /^\\d{2}$/.test(p.id) && typeof p.name === 'string' && p.name.trim() && p.name.length <= 100).map(p => ({ id: p.id, name: p.name.trim() }))\n    : [];\n  if (!provinces.length) return {\n    action: 'reply', chat_id: prepared.chat_id,\n    reply: 'No pudimos cargar el listado de provincias de reportAR. Probá de nuevo con /reportar en unos minutos.',\n    error_stage: 'provinces',\n  };\n  // Resolver las opciones ANTES de enviar el formulario. El editor de campos\n  // no representa bien una expresión que sustituye el array interno de opciones.\n  const form_fields = [\n    { fieldLabel: 'Tipo de problema', fieldType: 'dropdown', fieldOptions: { values: ['Bache o vereda rota', 'Inundación', 'Alumbrado público', 'Basura o limpieza', 'Árboles y espacios verdes', 'Otro problema'].map(option => ({ option })) }, requiredField: true },\n    { fieldLabel: 'Descripción', fieldType: 'textarea', placeholder: 'Entre 10 y 2000 caracteres. Contá qué pasa y qué riesgo o impacto tiene.', requiredField: true },\n    { fieldLabel: 'Provincia', fieldType: 'dropdown', fieldOptions: { values: provinces.map(p => ({ option: p.name })) }, requiredField: true },\n    { fieldLabel: 'Ciudad o localidad', fieldType: 'text', placeholder: 'Escribí el nombre completo de la localidad de la provincia elegida.', requiredField: true },\n    { fieldLabel: 'Calle y altura', fieldType: 'text', placeholder: 'Calle, altura o esquina. Ej.: Córdoba 1900.', requiredField: true },\n    { fieldLabel: 'Foto', fieldType: 'file', multipleFiles: false, requiredField: false },\n  ];\n  return { ...prepared, provinces, form_fields };\n}\nreturn $input.all().map((item, i) => ({ json: prepareProvinces(item.json, $(\"Preparar formulario\").first().json), pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "geo-ready",
+      "name": "¿Catálogo disponible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        -120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"form\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "form",
+      "name": "Formulario de reclamo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        -240
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendAndWait",
+        "chatId": "={{ $json.chat_id }}",
+        "message": "={{ $json.welcome }}",
+        "responseType": "customForm",
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify($(\"Preparar provincias\").first().json.form_fields) }}",
+        "options": {
+          "appendAttribution": false,
+          "messageButtonLabel": "📝 Completar reclamo",
+          "responseFormTitle": "reportAR · Reclamos en Argentina",
+          "responseFormDescription": "Completá los datos y volvé a Telegram para recibir el número del reclamo. La localidad debe pertenecer a la provincia elegida. Foto opcional: un archivo original de hasta 100 MiB, como en la web. Adjuntalo acá aunque ya lo hayas enviado por chat. No atiende emergencias.",
+          "responseFormButtonLabel": "Enviar reclamo",
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 30,
+              "resumeUnit": "minutes"
+            }
+          }
+        }
+      },
+      "webhookId": "3773bb09-c527-4f69-a3bd-242cb462005f"
+    },
+    {
+      "id": "validate",
+      "name": "Validar formulario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -240
+      ],
+      "parameters": {
+        "jsCode": "function parseFormResponse(response, context, provinces, binary = {}) {\n  const base = { chat_id: context.chat_id };\n  const data = response.data;\n  if (!data || typeof data !== 'object') return {\n    ...base, action: 'reply', reply: 'El formulario venció o no se recibió una respuesta. Escribí /reportar para abrir uno nuevo.',\n  };\n  const field = key => typeof data[key] === 'string' ? data[key].trim() : '';\n  const normalize = value => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();\n  const categories = {\n    'Bache o vereda rota': 'bache', 'Inundación': 'inundacion', 'Alumbrado público': 'alumbrado',\n    'Basura o limpieza': 'basura', 'Árboles y espacios verdes': 'arbolado', 'Otro problema': 'otro',\n  };\n  const category = Object.hasOwn(categories, field('Tipo de problema')) ? categories[field('Tipo de problema')] : '';\n  const description = field('Descripción');\n  const street = field('Calle y altura');\n  const city = field('Ciudad o localidad');\n  const province = provinces.find(p => normalize(p.name) === normalize(field('Provincia')));\n  const photoKeys = Object.keys(binary).filter(key => /^Foto(?:_\\d+)?$/.test(key));\n  const errors = [];\n  if (!category) errors.push('Elegí un tipo de problema de la lista.');\n  if (typeof data['Descripción'] !== 'string' || data['Descripción'].length > 2000 || description.length < 10) errors.push('Descripción: entre 10 y 2000 caracteres.');\n  if (street.length < 3 || street.length > 300) errors.push('Calle y altura: entre 3 y 300 caracteres.');\n  if (city.length < 2 || city.length > 100) errors.push('Indicá la ciudad o localidad (2 a 100 caracteres).');\n  if (!province) errors.push('Elegí una provincia válida de la lista.');\n  if (photoKeys.length > 1) errors.push('Solo se admite una foto.');\n  if (data.Foto && (Array.isArray(data.Foto) ? data.Foto.length > 0 : Boolean(data.Foto.filename)) && !photoKeys.length) errors.push('No pudimos leer la foto adjunta. Volvé a cargarla.');\n  if (errors.length) return {\n    ...base, action: 'reply', reply: 'No enviamos el reclamo porque hay datos para corregir:\\n\\n' + errors.join('\\n') + '\\n\\nEscribí /reportar para abrir otro formulario. No se recortó ningún campo.',\n  };\n  return {\n    ...base, action: 'validate_location', form_photo_key: photoKeys[0] || null,\n    location: { street, city, province: province.name, province_id: province.id },\n    report: {\n      source: 'telegram', external_id: `telegram:${context.chat_id}:${context.message_id}`,\n      category, description, address: '',\n      reporter: { telegram_user_id: context.user_id, telegram_chat_id: context.chat_id },\n      reported_at: context.reported_at, photo: null, expectsPhoto: photoKeys.length === 1,\n    },\n  };\n}\nconst prepared = $(\"Preparar provincias\").first().json;\nreturn $input.all().map((item, i) => ({ json: parseFormResponse(item.json, prepared.context, prepared.provinces, item.binary), binary: item.binary, pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "valid",
+      "name": "¿Datos válidos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        -240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"validate_location\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "localities-http",
+      "name": "Cargar localidades de reportAR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -360
+      ],
+      "parameters": {
+        "url": "https://reportar-one.vercel.app/api/geography/localities",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "province",
+              "value": "={{ $json.location.province_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "locality",
+      "name": "Validar localidad",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        -360
+      ],
+      "parameters": {
+        "jsCode": "function validateLocality(response, original) {\n  const normalize = value => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/\\s+/g, ' ').trim();\n  const localities = response.statusCode === 200 && Array.isArray(response.body?.localities) ? response.body.localities : null;\n  const city = localities?.find(p => typeof p.name === 'string' && normalize(p.name) === normalize(original.location.city));\n  if (!city) return {\n    ...original, action: 'reply', error_stage: 'localities',\n    reply: localities\n      ? 'No encontramos esa ciudad o localidad en ' + original.location.province + '. Revisá el nombre y escribí /reportar para completar otro formulario. El reclamo no se envió.'\n      : 'No pudimos verificar la localidad en reportAR. No enviamos el reclamo. Probá de nuevo con /reportar en unos minutos.',\n  };\n  // Igual que la web: calle + localidad + provincia, sin repetir componentes.\n  const parts = original.location.street.split(',').map(p => p.trim()).filter(Boolean);\n  for (const part of [city.name, original.location.province]) {\n    if (!parts.some(p => normalize(p) === normalize(part))) parts.push(part);\n  }\n  const address = parts.join(', ');\n  if (address.length < 5 || address.length > 300) return {\n    ...original, action: 'reply',\n    reply: 'La dirección completa (calle, localidad y provincia) debe tener entre 5 y 300 caracteres. No se recortó ningún dato. Escribí /reportar y acortá la referencia.',\n  };\n  return { ...original, action: 'create', location: { ...original.location, city: city.name }, report: { ...original.report, address } };\n}\nconst original = $(\"Validar formulario\").first();\nreturn $input.all().map((item, i) => ({ json: validateLocality(item.json, original.json), binary: original.binary, pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "location-valid",
+      "name": "¿Localidad válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        -360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"create\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "photo-validate",
+      "name": "Revisar foto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        -480
+      ],
+      "parameters": {
+        "jsCode": "function validateFormPhoto(bytes, metadata) {\n  if (!bytes.length || bytes.length > 100 * 1024 * 1024) return { ok: false, error: 'La foto debe pesar como máximo 100 MiB y no estar vacía.' };\n  // Igual que el formulario web: conservar el original, incluidos HEIC y RAW.\n  return { ok: true, mimeType: metadata.mimeType || 'application/octet-stream' };\n}\nreturn await Promise.all($input.all().map(async (item, i) => {\n  const key = item.json.form_photo_key;\n  if (!key) return { ...item, pairedItem: { item: i } };\n  try {\n    const bytes = await this.helpers.getBinaryDataBuffer(i, key);\n    const check = validateFormPhoto(bytes, item.binary[key]);\n    if (!check.ok) return { json: { ...item.json, action: \"reply\", reply: check.error + \" No enviamos el reclamo. Escribí /reportar y completá otro formulario.\" }, pairedItem: { item: i } };\n    return { json: item.json, binary: { ...item.binary, [key]: { ...item.binary[key], mimeType: check.mimeType } }, pairedItem: { item: i } };\n  } catch { return { json: { ...item.json, action: \"reply\", error_stage: \"form_binary\", reply: \"No pudimos leer la foto. El reclamo no se envió. Probá de nuevo con /reportar.\" }, pairedItem: { item: i } }; }\n}));"
+      }
+    },
+    {
+      "id": "photo-valid",
+      "name": "¿Foto válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2860,
+        -480
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"create\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "persist",
+      "name": "Guardar reporte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        -600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://reportar-one.vercel.app/api/bot/reports",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $(\"Revisar foto\").first().json.report.external_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $(\"Revisar foto\").first().json.report }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "photo-plan",
+      "name": "Preparar carga Blob",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        -600
+      ],
+      "parameters": {
+        "jsCode": "function prepareBlobUpload(response, original, metadata = {}) {\n  const body = response.body;\n  const received = [200, 201].includes(response.statusCode) && body?.status === 'received'\n    && typeof body.id === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(body.id);\n  if (!received || !original.form_photo_key || body.photo_status === 'stored') return { action: 'result' };\n  if (body.photo_status !== 'pending' || !/^[0-9a-f]{64}$/i.test(body.photoUploadToken || '')) return {\n    action: 'result', photo_error: { stage: 'create', code: 'missing_upload_capability' },\n  };\n  const safeName = (metadata.fileName || 'foto').normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100) || 'foto';\n  // Reintentar el mismo evento usa el mismo pathname; el token habilita overwrite.\n  const pathname = `reports/${body.id}/${body.id}-${safeName}`;\n  return {\n    action: 'upload', report_id: body.id, photoUploadToken: body.photoUploadToken,\n    pathname, form_photo_key: original.form_photo_key,\n    content_type: metadata.mimeType || 'application/octet-stream',\n    token_request: { type: 'blob.generate-client-token', payload: {\n      pathname, multipart: false,\n      clientPayload: JSON.stringify({ reportId: body.id, token: body.photoUploadToken, client: 'n8n' }),\n    } },\n  };\n}\nconst original = $(\"Revisar foto\").first();\nreturn $input.all().map((item, i) => ({ json: prepareBlobUpload(item.json, original.json, original.binary?.[original.json.form_photo_key]), pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "photo-needed",
+      "name": "¿Adjuntar foto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3520,
+        -600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"upload\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "photo-authorize",
+      "name": "Autorizar foto como la web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3740,
+        -720
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://reportar-one.vercel.app/api/reports/photo-upload",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.token_request }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "photo-binary",
+      "name": "Preparar binario Blob",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        -720
+      ],
+      "parameters": {
+        "jsCode": "function prepareBlobToken(response, upload) {\n  const clientToken = response.body?.clientToken;\n  if (response.statusCode !== 200 || response.body?.type !== 'blob.generate-client-token'\n      || typeof clientToken !== 'string' || !/^vercel_blob_client_[a-zA-Z0-9]+_/.test(clientToken)) return {\n    action: 'recheck', photo_error: { stage: 'authorize', status: response.statusCode || null, code: response.body?.error || 'invalid_upload_token' },\n  };\n  return { ...upload, clientToken, store_id: clientToken.split('_')[3] };\n}\nconst upload = $(\"Preparar carga Blob\").first().json;\nconst original = $(\"Revisar foto\").first();\nreturn $input.all().map((item, i) => ({ json: prepareBlobToken(item.json, upload), binary: original.binary, pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "token-ready",
+      "name": "¿Foto autorizada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4180,
+        -720
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"upload\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "photo-put",
+      "name": "Subir al Blob de la web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        -840
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "https://vercel.com/api/blob/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "pathname",
+              "value": "={{ $json.pathname }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ \"Bearer \" + $json.clientToken }}"
+            },
+            {
+              "name": "x-api-version",
+              "value": "13"
+            },
+            {
+              "name": "x-vercel-blob-store-id",
+              "value": "={{ $json.store_id }}"
+            },
+            {
+              "name": "x-vercel-blob-access",
+              "value": "public"
+            },
+            {
+              "name": "x-content-type",
+              "value": "={{ $json.content_type }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "={{ $json.form_photo_key }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "attach-prepare",
+      "name": "Preparar adjunto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4620,
+        -840
+      ],
+      "parameters": {
+        "jsCode": "function prepareBlobAttachment(response, upload) {\n  const blob = response.body;\n  const prefix = `https://${upload.store_id.toLowerCase()}.public.blob.vercel-storage.com/`;\n  if (![200, 201].includes(response.statusCode) || typeof blob?.url !== 'string'\n      || !blob.url.startsWith(prefix) || blob.pathname !== upload.pathname) return {\n    action: 'recheck', photo_error: { stage: 'upload', status: response.statusCode || null, code: 'invalid_blob_response' },\n  };\n  return { action: 'attach', report_id: upload.report_id, attachment: { token: upload.photoUploadToken, url: blob.url } };\n}\nconst upload = $(\"Preparar binario Blob\").first().json;\nreturn $input.all().map((item, i) => ({ json: prepareBlobAttachment(item.json, upload), pairedItem: { item: i } }));"
+      }
+    },
+    {
+      "id": "blob-ready",
+      "name": "¿Archivo subido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4840,
+        -840
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"attach\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "photo-attach",
+      "name": "Vincular foto al reclamo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5060,
+        -960
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://reportar-one.vercel.app/api/reports/\" + $json.report_id + \"/photo/attach\" }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.attachment }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "attached-check",
+      "name": "¿Adjunto confirmado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5280,
+        -960
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.statusCode === 200 && $json.body?.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "recheck",
+      "name": "Reconsultar mismo reclamo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5500,
+        -480
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://reportar-one.vercel.app/api/bot/reports",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $(\"Revisar foto\").first().json.report.external_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $(\"Revisar foto\").first().json.report }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "result",
+      "name": "Preparar resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5720,
+        -240
+      ],
+      "parameters": {
+        "jsCode": "function formatFormResult(response, original, firstResponse, photoError) {\n  const received = value => [200, 201].includes(value?.statusCode)\n    && value.body?.status === 'received' && typeof value.body.id === 'string'\n    && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(value.body.id);\n  const result = received(response) ? response : received(firstResponse) ? firstResponse : null;\n  const hasPhoto = Boolean(original.report.expectsPhoto);\n  const body = result?.body;\n  const retry_event = { report: original.report, idempotency_key: original.report.external_id, form_photo_key: original.form_photo_key || null };\n  const failure = photoError || response.photo_error || (response.error || !result ? {\n    stage: result ? 'photo' : 'create', status: response.statusCode || response.error?.status || null,\n    code: typeof response.body?.error === 'string' ? response.body.error : response.error?.code || 'request_failed',\n  } : null);\n  if (!result) return {\n    chat_id: original.chat_id, confirmed: false, retry_event,\n    diagnostic: failure,\n    reply: 'No pudimos confirmar el guardado del reclamo. Conservamos los datos en esta ejecución para reintentar desde n8n con la misma clave.',\n  };\n  const photoStored = hasPhoto && (body.photo_status === 'stored' || (response.statusCode === 200 && response.body?.ok === true));\n  let reply = '✅ Reclamo guardado en reportAR.\\nNúmero: ' + body.id + '\\nUbicación: ' + original.report.address;\n  if (photoStored) reply += '\\n📷 La foto quedó adjunta.';\n  if (hasPhoto && !photoStored) reply += '\\nNo pudimos confirmar que se adjuntara la foto, pero el reclamo quedó guardado.';\n  reply += '\\n\\nPara crear otro reclamo, escribí /reportar.';\n  return {\n    chat_id: original.chat_id, confirmed: true, report_id: body.id,\n    ...(hasPhoto ? { photo_status: photoStored ? 'stored' : 'failed' } : {}),\n    ...(hasPhoto && !photoStored ? { retry_event, diagnostic: failure || { stage: 'photo', code: 'not_attached' } } : {}), reply,\n  };\n}\nfunction prepareFormResults(items, readOutput) {\n  const read = (name, branch = 0) => {\n    try { return readOutput(name, branch); } catch { return undefined; }\n  };\n  const original = read('Revisar foto');\n  if (!original?.report || !original.chat_id) throw new Error('Falta el contexto del reclamo. Reejecutá la ejecución original desde Telegram Trigger, conservando su mensaje.');\n  return items.map((item, i) => {\n    const saved = read('Guardar reporte') || read('Guardar reporte', 1);\n    const failure = read('Preparar binario Blob')?.photo_error || read('Preparar adjunto')?.photo_error;\n    return { json: formatFormResult(item.json, original, saved, failure), pairedItem: { item: i } };\n  });\n}\nreturn prepareFormResults($input.all(), (name, branch) => $(name).first(branch)?.json);"
+      }
+    },
+    {
+      "id": "reply",
+      "name": "Responder por Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5940,
+        80
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\") }}",
+        "replyMarkup": "none",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      }
+    },
+    {
+      "id": "note",
+      "name": "Configuración de la demo",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -700
+      ],
+      "parameters": {
+        "width": 740,
+        "height": 560,
+        "content": "## reportAR · Formulario + fotos como la web\nINACTIVO. Requiere desplegar el contrato expectsPhoto del endpoint del bot antes de activar.\n\nCredencial Telegram: Telegram Trigger, Formulario de reclamo y Responder por Telegram. Header Auth: Name Authorization; Value Bearer <REPORTS_API_TOKEN>, en Guardar reporte y Reconsultar mismo reclamo. No poner secretos en este JSON.\n\nURL de reportAR: https://reportar-one.vercel.app. n8n necesita su propia WEBHOOK_URL pública HTTPS. El formulario individual vence a los 30 minutos. Desactivar el workflow anterior antes de activar este.\n\nHola → formulario nativo: tipo, descripción, provincia, localidad, calle y altura, foto opcional hasta 100 MiB. Las opciones de provincia se resuelven como JSON; la localidad se valida contra el catálogo de la app.\n\nFoto: crear reclamo con expectsPhoto → autorización /api/reports/photo-upload → PUT directo a Vercel Blob → /api/reports/{id}/photo/attach. Mismo store y rutas que la web; BLOB_READ_WRITE_TOKEN queda solo en Vercel. No usa sendPhoto, getFile ni AWS para esta carga.\n\nCada HTTP admite hasta 3 intentos. external_id, Idempotency-Key y pathname permanecen iguales. Si falla el adjunto se reconsulta el mismo reclamo para reconocer una carga ya completada. Se conserva el ID y se informa el fallo de foto.\n\nLas ejecuciones guardan el archivo y autorizaciones temporales para reintentar. Restringir acceso y retención en n8n; usar datos ficticios en la demo. No se confirma derivación a organismos."
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Preparar formulario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar formulario": {
+      "main": [
+        [
+          {
+            "node": "¿Abrir formulario?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Abrir formulario?": {
+      "main": [
+        [
+          {
+            "node": "Cargar provincias de reportAR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Responder mensaje?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Responder mensaje?": {
+      "main": [
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Cargar provincias de reportAR": {
+      "main": [
+        [
+          {
+            "node": "Preparar provincias",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar provincias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar provincias": {
+      "main": [
+        [
+          {
+            "node": "¿Catálogo disponible?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Catálogo disponible?": {
+      "main": [
+        [
+          {
+            "node": "Formulario de reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formulario de reclamo": {
+      "main": [
+        [
+          {
+            "node": "Validar formulario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar formulario": {
+      "main": [
+        [
+          {
+            "node": "¿Datos válidos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Datos válidos?": {
+      "main": [
+        [
+          {
+            "node": "Cargar localidades de reportAR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar localidades de reportAR": {
+      "main": [
+        [
+          {
+            "node": "Validar localidad",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validar localidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar localidad": {
+      "main": [
+        [
+          {
+            "node": "¿Localidad válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Localidad válida?": {
+      "main": [
+        [
+          {
+            "node": "Revisar foto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revisar foto": {
+      "main": [
+        [
+          {
+            "node": "¿Foto válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Foto válida?": {
+      "main": [
+        [
+          {
+            "node": "Guardar reporte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar reporte": {
+      "main": [
+        [
+          {
+            "node": "Preparar carga Blob",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar carga Blob": {
+      "main": [
+        [
+          {
+            "node": "¿Adjuntar foto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Adjuntar foto?": {
+      "main": [
+        [
+          {
+            "node": "Autorizar foto como la web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autorizar foto como la web": {
+      "main": [
+        [
+          {
+            "node": "Preparar binario Blob",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar binario Blob",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar binario Blob": {
+      "main": [
+        [
+          {
+            "node": "¿Foto autorizada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Foto autorizada?": {
+      "main": [
+        [
+          {
+            "node": "Subir al Blob de la web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reconsultar mismo reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subir al Blob de la web": {
+      "main": [
+        [
+          {
+            "node": "Preparar adjunto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar adjunto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar adjunto": {
+      "main": [
+        [
+          {
+            "node": "¿Archivo subido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Archivo subido?": {
+      "main": [
+        [
+          {
+            "node": "Vincular foto al reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reconsultar mismo reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vincular foto al reclamo": {
+      "main": [
+        [
+          {
+            "node": "¿Adjunto confirmado?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reconsultar mismo reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Adjunto confirmado?": {
+      "main": [
+        [
+          {
+            "node": "Preparar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reconsultar mismo reclamo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconsultar mismo reclamo": {
+      "main": [
+        [
+          {
+            "node": "Preparar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar resultado": {
+      "main": [
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "tags": []
+}
