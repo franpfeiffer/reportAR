@@ -11,11 +11,13 @@ function parseUpdate(update) {
     '📍 Dirección: indicá calle, altura o esquina y localidad para ubicar el problema.',
     '📷 Podés adjuntar UNA foto y pegar la plantilla completa en su descripción. Con foto, usá hasta 1024 caracteres en total.',
     'Podés pedirme otra plantilla con /reportar o /plantilla.',
-    'Los reclamos válidos se guardan en ReportAR. Para clasificarlos se envían a TypeSafe/JEV solo la descripción y la categoría declarada; no se envían dirección, foto ni identificadores. La foto todavía no se almacena. No se confirma envío al municipio. Los mensajes pueden quedar en el historial de n8n. Este canal no atiende emergencias.'
+    'Los reclamos válidos se guardan en ReportAR. Para clasificarlos se envían a TypeSafe/JEV solo la descripción y la categoría declarada; no se envían dirección, foto ni identificadores. Si adjuntás una foto al mismo mensaje, ReportAR intentará guardarla y mostrarla en el seguimiento. No se confirma envío al municipio. Los mensajes pueden quedar en el historial de n8n. Este canal no atiende emergencias.'
   ].join('\n\n');
-  const text = (m.text || m.caption || '').trim();
   const base = { chat_id: String(m.chat.id) };
   const guide = reply => ({ ...base, action: 'reply', reply, template });
+  if (m.media_group_id) return guide('📷 Por ahora no se admiten álbumes. Enviá una sola foto y completá la plantilla en su descripción.');
+  if (m.document) return guide('📷 Por ahora solo se aceptan fotos adjuntas como foto, no como archivo. Enviá una sola foto con la plantilla completa en su descripción.');
+  const text = (m.text || m.caption || '').trim();
   if (/^\/(start|help|ayuda|reportar|plantilla)(?:@\w+)?(?:\s|$)/i.test(text) || /^(hola|buenas|buen dia|buen día)[!.\s]*$/i.test(text)) return guide(help);
   // Leer campos línea por línea permite espacios, líneas vacías, emojis y otro orden.
   const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();

@@ -21,7 +21,7 @@ No ejecutar `docker compose down -v` si querés conservar los datos. Para recibi
 
 ## Importar el flujo
 
-Importar `n8n/reportes-municipales-mock.json` desde **Import from File** en n8n.
+Importar `n8n/reportes-municipales.json` desde **Import from File** en n8n. El archivo histórico `reportes-municipales-mock.json` es solo demostrativo y no debe activarse.
 
 1. Crear un bot en Telegram con **@BotFather** y guardar su token en una credencial Telegram de n8n.
 2. Seleccionar esa credencial en **Telegram Trigger**, **Responder por Telegram**, **Explicar como reportar** y **Enviar plantilla para copiar**.
@@ -43,13 +43,13 @@ Los campos incompletos no generan un reporte. También sigue aceptando el format
 bache | Pozo grande en la esquina | San Martín 123
 ```
 
-Categorías: `bache`, `inundacion`, `alumbrado`, `basura`, `arbolado`, `otro`. También se admite una foto individual con ese texto como descripción. La dirección es texto libre: no hay validación geográfica. Los álbumes, audio, GPS y seguimiento de estados quedan fuera de este MVP.
+Categorías: `bache`, `inundacion`, `alumbrado`, `basura`, `arbolado`, `otro`. También se admite una foto individual adjunta al mismo mensaje que lleva ese texto como descripción. La dirección es texto libre: no hay validación geográfica. Los álbumes, imágenes enviadas como documento, audio, GPS y seguimiento de estados quedan fuera de este MVP.
 
-El bot responde con un número MOCK y aclara que no guardó el reclamo ni lo envió al municipio. El nodo mock no conserva reportes; n8n sí puede guardar el contenido en el historial de ejecuciones. Usar datos ficticios.
+El workflow de persistencia confirma el número solo después de recibir `status: received` de reportAR. Si la foto queda pendiente, el bot lo informa; no afirma que el reclamo se envió al municipio. n8n puede guardar el contenido en el historial de ejecuciones. Usar datos ficticios.
 
-## Endpoint futuro
+## Endpoint de reportAR
 
-El nodo **Guardar reporte MOCK** simula la respuesta de `POST /api/reports`. Su entrada contiene `report`, el JSON a enviar a la app. El workflow incluye una nota con el método, autenticación, idempotencia y cambios necesarios para conectar el HTTP Request real. Las fotos contienen un `telegram_file_id`; todavía no se descargan ni almacenan.
+El nodo **Guardar reporte** envía el reporte a `POST /api/bot/reports` con Bearer e idempotencia. Su entrada contiene `report`, el JSON que se envía a reportAR. reportAR descarga la foto de Telegram y la guarda en el bucket privado Neon; la página de seguimiento la entrega a través de una ruta del servidor.
 
 `src/mock-api.js` es un servidor local opcional con persistencia en archivo para una siguiente prueba de integración; el workflow entregado no lo llama. Ejecutarlo con `REPORTS_API_TOKEN` definido mediante `npm start`. Escucha únicamente en localhost. No es un backend de producción.
 
@@ -77,7 +77,7 @@ El workflow listo para conectar es `n8n/reportes-municipales.json` (generado por
 4. Desactivar el workflow anterior y activar el nuevo únicamente con URL y credenciales reales. Telegram admite un único webhook por bot.
 5. Enviar un reclamo de prueba y comprobar su ID en `/reclamo/<id>` y en administración. Reejecutar el mismo payload debe devolver el mismo ID. Un mensaje nuevo de Telegram tiene otro external_id y crea otro reclamo.
 
-El nodo HTTP realiza hasta tres intentos con la misma clave de idempotencia. Solo una respuesta válida confirma éxito. Los errores de guardado se comunican por una rama separada; si se perdió la respuesta después de guardar, no se afirma que el reporte haya fallado. La ayuda y los mensajes incompletos no se persisten. Las fotos conservan su telegram_file_id; todavía no se descargan ni se almacenan en el bucket.
+El workflow reintenta hasta tres veces guardar la foto, siempre con la misma clave de idempotencia. El reporte se conserva aunque Telegram o Neon no permitan adjuntar la imagen; en ese caso el bot confirma el número e informa que la foto quedó pendiente. La ayuda y los mensajes incompletos no se persisten. No se confirma envío al municipio.
 
 El bot usa POST `/api/bot/reports`, Authorization Bearer y el header Idempotency-Key igual a `report.external_id`. El endpoint local `src/mock-api.js` sigue siendo una herramienta de desarrollo y no es el endpoint publicado. No activar el workflow generado sin completar la configuración.
 

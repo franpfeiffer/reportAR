@@ -48,6 +48,7 @@ export const citizenReports = pgTable("citizen_reports", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   photoUrl: text("photo_url"),
+  photoStorageKey: text("photo_storage_key"),
   photoContentType: text("photo_content_type"),
   photoFilename: text("photo_filename"),
   photoUploadTokenHash: text("photo_upload_token_hash"),

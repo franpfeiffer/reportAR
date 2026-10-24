@@ -11,7 +11,14 @@ test('HTTP autenticado conecta éxito y error por ramas separadas', () => {
   assert.equal(save.parameters.genericAuthType, 'httpHeaderAuth');
   assert.match(save.parameters.url, /api\/bot\/reports/);
   assert.equal(save.parameters.headerParameters.parameters[0].name, 'Idempotency-Key');
-  assert.equal(workflow.connections['Guardar reporte'].main[0][0].node, 'Preparar confirmacion');
+  assert.equal(workflow.connections['Guardar reporte'].main[0][0].node, '¿Foto pendiente tras guardado?');
+  assert.equal(workflow.connections['¿Foto pendiente tras guardado?'].main[0][0].node, 'Reintentar foto 1');
+  assert.equal(workflow.connections['Reintentar foto 1'].main[0][0].node, '¿Foto pendiente tras reintento?');
+  assert.equal(workflow.connections['¿Foto pendiente tras reintento?'].main[0][0].node, 'Reintentar foto 2');
+  assert.equal(workflow.connections['Reintentar foto 2'].main[0][0].node, 'Preparar confirmacion');
+  assert.equal(workflow.connections['Reintentar foto 1'].main[1][0].node, 'Informar foto pendiente');
+  assert.equal(workflow.connections['Reintentar foto 2'].main[1][0].node, 'Informar foto pendiente');
+  assert.equal(workflow.connections['Informar foto pendiente'].main[0][0].node, 'Responder por Telegram');
   assert.equal(workflow.connections['Guardar reporte'].main[1][0].node, 'Informar error de guardado');
   assert.equal(workflow.connections['Preparar confirmacion'].main[1][0].node, 'Informar error de guardado');
 });
@@ -25,12 +32,32 @@ test('confirmación solo después de una respuesta válida; errores no confirman
   assert.equal(reply.chat_id, '123');
   assert.throws(() => execute('Preparar confirmacion', {error:'failed'}));
   assert.match(execute('Informar error de guardado', {}).reply, /No pudimos confirmar/);
+  const photo = parseUpdate({message:{...message,text:undefined,caption:'bache | Pozo grande en la esquina | San Martín 123',photo:[{file_id:'photo'}]}});
+  const executePhoto = response => vm.runInNewContext(`(function(){${workflow.nodes.find(n => n.name === 'Preparar confirmacion').parameters.jsCode}})()`, {
+    $input:{all:()=>[{json:response}]}, $:()=>({itemMatching:()=>({json:photo})})
+  })[0].json;
+  assert.match(executePhoto({id:'12345678-1234-4123-8123-123456789012',status:'received',photo_status:'stored'}).reply,/foto quedó adjunta/);
+  assert.match(executePhoto({id:'12345678-1234-4123-8123-123456789012',status:'received',photo_status:'failed'}).reply,/reclamo quedó guardado, pero no pudimos adjuntar la foto/);
+  const retryError = vm.runInNewContext(`(function(){${workflow.nodes.find(n => n.name === 'Informar foto pendiente').parameters.jsCode}})()`, {
+    $input:{all:()=>[{json:{error:'temporary failure'}}]},
+    $: name => ({itemMatching:()=>name === 'Validar reporte' ? {json:photo} : {json:{id:'12345678-1234-4123-8123-123456789012',status:'received',photo_status:'failed'}}})
+  })[0].json;
+  assert.match(retryError.reply,/reclamo quedó guardado, pero no pudimos adjuntar la foto/);
+  assert.match(retryError.reply,/12345678-1234-4123-8123-123456789012/);
 });
 test('ayuda, inválidos y mensajes de grupos no crean reportes', () => {
   assert.equal(parseUpdate({ message: { ...message, text: '/start' } }).action, 'reply');
   assert.equal(parseUpdate({ message: { ...message, text: 'hola' } }).action, 'reply');
   assert.equal(parseUpdate({ message: { ...message, chat: { id: -1, type: 'group' } } }).action, 'ignore');
   assert.equal(parseUpdate({}).action, 'ignore');
+});
+test('no trata álbumes o imágenes enviadas como documento como una foto guardada', () => {
+  const album = parseUpdate({ message: { ...message, text: undefined, media_group_id: 'album-1', caption: 'bache | Pozo grande en la esquina | San Martín 123', photo: [{ file_id: 'photo' }] } });
+  assert.equal(album.action, 'reply');
+  assert.match(album.reply, /no se admiten álbumes/);
+  const document = parseUpdate({ message: { ...message, text: undefined, caption: 'bache | Pozo grande en la esquina | San Martín 123', document: { file_id: 'image-document', mime_type: 'image/jpeg' } } });
+  assert.equal(document.action, 'reply');
+  assert.match(document.reply, /adjuntas como foto, no como archivo/);
 });
 test('foto con descripción y categoría acentuada', () => {
   const result = parseUpdate({ message: { ...message, text: undefined, caption: 'inundación | Agua acumulada en la calle | Belgrano 450', photo: [{ file_id: 'small' }, { file_id: 'large' }] } });
@@ -52,7 +79,7 @@ test('plantilla y saludos ofrecen un ejemplo válido sin crear reportes', () => 
     const result = runCode('Validar reporte', { message: { ...message, text } });
     assert.equal(result.action, 'reply');
     assert.match(result.reply, /se guardan en ReportAR/);
-    assert.match(result.reply, /foto todavía no se almacena/);
+    assert.match(result.reply, /ReportAR intentará guardarla y mostrarla en el seguimiento/);
     assert.match(result.template, /Categoría: \[tipo de problema\]/);
     assert.match(result.reply, /UNA foto/);
     assert.ok(!result.report);

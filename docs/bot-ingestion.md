@@ -2,7 +2,7 @@
 
 `POST /api/bot/reports` recibe el JSON generado por Bot-reportar. No requiere una sesión ciudadana: usa `Authorization: Bearer <REPORTS_API_TOKEN>` y `Idempotency-Key: <external_id>`. El secreto se genera en `.env` local ignorado por Git; configurar el mismo valor como variable de servidor en Vercel y en una credencial Header Auth de n8n. No usar prefijos NEXT_PUBLIC para secretos.
 
-Respuesta: `{ "id": "<public_id>", "status": "received" }`. Creación: 201; reentrega: 200, con el mismo ID incluso si el reclamo ya fue resuelto. El seguimiento está en `/reclamo/<id>` y el panel administrativo incluye los reportes con origen TELEGRAM. Los identificadores de Telegram no se publican en esas vistas.
+Respuesta sin foto: `{ "id": "<public_id>", "status": "received" }`. Con foto agrega `photo_status: "stored" | "failed"`. Una reentrega vuelve a intentar la foto si todavía no quedó guardada. Creación: 201; reentrega: 200, con el mismo ID incluso si el reclamo ya fue resuelto. El seguimiento está en `/reclamo/<id>` y el panel administrativo incluye los reportes con origen TELEGRAM. Los identificadores de Telegram no se publican en esas vistas.
 
 ```json
 {
@@ -17,7 +17,7 @@ Respuesta: `{ "id": "<public_id>", "status": "received" }`. Creación: 201; reen
 }
 ```
 
-`photo` puede ser null u omitirse. Se conserva su referencia, sin descargar la imagen. Categorías: bache, inundacion, alumbrado, basura, otro. Descripción: 10–2000 caracteres; dirección: 5–300. Límite del cuerpo: 20.000 bytes, también sin Content-Length. Errores: 401 sin autorización; 400 JSON inválido; 422 validación o idempotencia inválida; 413 cuerpo excesivo; 503 configuración ausente o fallo de persistencia. No registrar tokens ni payloads en logs.
+`photo` puede ser null u omitirse. El bot solo envía una foto adjunta al mismo mensaje que contiene el reclamo; álbumes e imágenes enviadas como documentos quedan fuera de esta versión. Cuando existe `telegram_file_id`, reportAR lo descarga y guarda la imagen en el bucket privado `report-images`; la página de seguimiento la sirve mediante el endpoint de fotos. Las descargas están limitadas a 20 MB y se valida tipo y formato real. Si falla la operación de foto, el reclamo permanece guardado y la respuesta lleva `photo_status: "failed"`. Categorías: bache, inundacion, alumbrado, basura, otro. Descripción: 10–2000 caracteres; dirección: 5–300. Límite del cuerpo: 20.000 bytes, también sin Content-Length. Errores: 401 sin autorización; 400 JSON inválido; 422 validación o idempotencia inválida; 413 cuerpo excesivo; 503 configuración ausente o fallo de persistencia. No registrar tokens ni payloads en logs.
 
 ## Base
 
@@ -31,7 +31,7 @@ Migración versionada: `drizzle/0005_bot_reports.sql`. Aplicada primero en `dev-
 - Endpoint S3: https://br-billowing-firefly-b7dfmibk.storage.c-13.us-east-1.aws.neon.tech
 - Credencial de servidor con storage:read y storage:write, guardada en `.env` ignorado.
 
-Variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION y REPORT_IMAGES_BUCKET. Copiarlas a variables de servidor en Vercel cuando se implemente la descarga de imágenes. Para un cliente AWS S3 usar forcePathStyle: true. No exponer credenciales ni guardar URLs firmadas en la base.
+Variables de servidor en Vercel: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION, REPORT_IMAGES_BUCKET y TELEGRAM_BOT_TOKEN. El SDK S3 usa direccionamiento path-style (`forcePathStyle: true`). No exponer credenciales ni guardar URLs firmadas en la base.
 
 La configuración declarativa está en `infrastructure/storage/neon.ts`, deliberadamente separada del neon.ts principal: Object Storage no está disponible en São Paulo y ambos proyectos tienen ramas independientes. No aplicar esa configuración al proyecto de base/Auth ni reutilizarlo para Pixly.
 
@@ -82,17 +82,17 @@ No generar un external_id aleatorio ni uno nuevo en cada reintento. Reejecutar e
 
 ### Procesar la respuesta
 
-Creación: HTTP 201. Duplicado: HTTP 200. En ambos casos:
+Creación: HTTP 201. Duplicado: HTTP 200. Sin foto:
 
 ```json
 { "id": "12345678-1234-4123-8123-123456789012", "status": "received" }
 ```
 
-`id` es el UUID público del reclamo, apto para el enlace `https://<dominio-real>/reclamo/<id>`. `status: received` confirma recepción por esta API; no representa el estado municipal actual. Un duplicado puede corresponder a un reclamo RESUELTO y seguir devolviendo received. El reintento no modifica el contenido ni el estado del reclamo existente.
+`photo_status` vale `stored` o `failed` cuando el JSON incluye una foto. `id` es el UUID público del reclamo, apto para el enlace `https://<dominio-real>/reclamo/<id>`. `status: received` confirma persistencia del reclamo; no representa el estado municipal actual. Un duplicado puede corresponder a un reclamo RESUELTO y seguir devolviendo received. El reintento no modifica el contenido ni el estado existente; si la foto aún falta, vuelve a intentar adjuntarla.
 
-Confirmar éxito solo con HTTP 200/201, id UUID válido y status received. Conservar chat_id y datos del reporte desde el nodo Validar reporte: el HTTP Request devuelve solo id/status. El workflow usa `$("Validar reporte").itemMatching(i).json` para recuperar el item correspondiente; evitar first() al manejar varios items.
+Confirmar el reclamo solo con HTTP 200/201, id UUID válido y status received. Si el reporte tenía foto, confirmar la foto solo con `photo_status: stored`. El workflow repite el POST hasta tres veces cuando `photo_status` es `failed`, conservando body e `Idempotency-Key`; tras el tercer fallo confirma el reclamo e informa que la foto quedó pendiente. Conservar chat_id y datos del reporte desde el nodo Validar reporte: el HTTP Request devuelve solo la respuesta. El workflow usa `$("Validar reporte").itemMatching(i).json` para recuperar el item correspondiente; evitar first() al manejar varios items.
 
-Texto sugerido: “Reporte guardado en ReportAR. Número: <id>. Seguimiento: <url>”. No afirmar que se envió al municipio ni que se guardó la imagen. Escapar &, < y > si se usa parse_mode HTML en Telegram. Si falla la API o su respuesta es inválida: “No pudimos confirmar el guardado”. Un timeout puede ocurrir después del insert; por eso no afirmar que no se guardó.
+Con `photo_status: stored`, el texto confirma que la foto quedó adjunta y disponible en seguimiento. Con `photo_status: failed`, confirma el número del reclamo y aclara que la foto quedó pendiente. Escapar &, < y > si se usa parse_mode HTML en Telegram. Si falla la API o su respuesta es inválida: “No pudimos confirmar el guardado”. Un timeout puede ocurrir después del insert; por eso no afirmar que no se guardó.
 
 ### Errores exactos
 
@@ -114,9 +114,10 @@ Una URL incorrecta, proxy o protección de despliegue puede devolver otros códi
 2. Completar URL real y Header Auth en el workflow nuevo; conservar las credenciales Telegram existentes. No cambiar el webhook a un segundo workflow activo.
 3. Enviar texto válido: comprobar 201, confirmación con UUID y presencia en administración/seguimiento.
 4. Reejecutar el mismo payload/clave: comprobar 200 y el mismo UUID, sin fila adicional.
-5. Enviar foto con caption válido: comprobar guardado del reclamo y telegram_file_id; no esperar imagen en la vista pública.
-6. Probar credencial incorrecta y fallo de API: comprobar ausencia de confirmación de éxito.
-7. Publicar el workflow solo después de completar estas configuraciones. Los accesos al bucket no son necesarios en n8n para esta versión.
+5. Enviar una foto con caption válido: comprobar `photo_status: "stored"`, que aparezca en el seguimiento y que la descarga use la ruta de reportAR.
+6. Forzar un fallo temporal de Telegram o Neon: verificar que el reclamo siga guardado, que n8n reintente con la misma clave y que, tras tres intentos, informe que la foto quedó pendiente.
+7. Probar credencial incorrecta y fallo de base: comprobar ausencia de confirmación de éxito.
+8. Publicar el workflow solo después de completar estas configuraciones. Los accesos al bucket no son necesarios en n8n.
 
 ## Código del bot en este repositorio
 
