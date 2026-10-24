@@ -1,6 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ReportMap } from "@/components/report-map";
+import { SiteHeader } from "@/components/site-header";
+import { StatusPill } from "@/components/status-pill";
+import { categoryLabels, isUuid } from "@/lib/reports/validation";
 import { db } from "@reportar/db";
 import { citizenReports } from "@reportar/db/schema";
 import { connection } from "next/server";
@@ -8,75 +11,37 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 
 type Props = { params: Promise<{ id: string }> };
-
 export const instant = false;
-
-const statusLabels = {
-  RECIBIDO: "Recibido",
-  EN_REVISION: "En revisión",
-  RESUELTO: "Resuelto",
-} as const;
-
-const categoryLabels = {
-  BACHE: "Bache o vereda rota",
-  ALUMBRADO: "Alumbrado público",
-  BASURA: "Basura o limpieza",
-  ARBOLADO: "Árboles y espacios verdes",
-  OTRO: "Otro problema",
-} as const;
+const steps = ["RECIBIDO", "EN_REVISION", "RESUELTO"] as const;
+const stepLabels = ["Recibido", "En revisión", "Resuelto"] as const;
 
 export default async function ComplaintPage({ params }: Props) {
   const { id } = await params;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) notFound();
-
+  if (!isUuid(id)) notFound();
   await connection();
-  const [report] = await db.select().from(citizenReports)
-    .where(eq(citizenReports.publicId, id)).limit(1);
+  const [report] = await db.select().from(citizenReports).where(eq(citizenReports.publicId, id)).limit(1);
   if (!report) notFound();
+  const currentStep = steps.indexOf(report.status);
 
   return (
-    <main className="min-h-screen bg-[#09090b] px-5 py-8 text-zinc-100 sm:px-8 sm:py-12">
-      <div className="mx-auto w-full max-w-3xl">
-        <Link href="/" className="text-sm font-semibold text-indigo-400 transition hover:text-indigo-300">← Volver a ReportAR</Link>
-        <header className="mt-10">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-400">Seguimiento ciudadano</p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Estado de tu reclamo</h1>
-          <p className="mt-4 text-zinc-400">Código <span className="font-mono text-zinc-300">{report.publicId}</span></p>
-        </header>
-
-        <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-950 p-6 sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-6">
-            <div>
-              <p className="text-sm text-zinc-500">Estado actual</p>
-              <p className="mt-1 text-xl font-semibold text-white">{statusLabels[report.status]}</p>
-            </div>
-            <span className="rounded-full border border-indigo-400/30 bg-indigo-400/10 px-3 py-1 text-sm font-medium text-indigo-300">
-              {categoryLabels[report.category]}
-            </span>
-          </div>
-          <dl className="grid gap-6 pt-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-zinc-500">Ubicación</dt>
-              <dd className="mt-1 text-zinc-200">{report.address}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-zinc-500">Enviado</dt>
-              <dd className="mt-1 text-zinc-200">
-                {report.createdAt.toLocaleDateString("es-AR", { dateStyle: "long", timeZone: "America/Argentina/Buenos_Aires" })}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-sm text-zinc-500">Descripción</dt>
-              <dd className="mt-1 whitespace-pre-wrap leading-7 text-zinc-200">{report.description}</dd>
-            </div>
-          </dl>
+    <div className="min-h-screen">
+      <SiteHeader />
+      <main className="site-shell py-9 sm:py-14">
+        <Link href="/" className="civic-link inline-flex items-center gap-2 text-sm"><span aria-hidden="true">←</span> Volver al inicio</Link>
+        <div className="mt-9 flex flex-wrap items-end justify-between gap-6"><div><h1 className="page-title">Así va tu reclamo.</h1><p className="body-lead mt-4">Podés volver a esta página con tu código cuando quieras.</p></div><StatusPill status={report.status} /></div>
+        <section className="surface mt-9 overflow-hidden" aria-labelledby="progress-title">
+          <div className="bg-[#14433F] px-6 py-7 text-white sm:px-9"><h2 id="progress-title" className="text-xl font-bold tracking-[-.04em]">Estado del reporte</h2><p className="mt-3 text-xs text-[#C5E0D4]">Código de seguimiento</p><code className="mt-1 block break-all font-mono text-xs text-white sm:text-sm">{report.publicId}</code></div>
+          <ol className="grid gap-0 px-6 py-7 sm:grid-cols-3 sm:px-9" aria-label="Etapas del reclamo">{stepLabels.map((label, index) => <li key={label} className={`border-t-4 py-3 pr-5 ${index <= currentStep ? "border-[#116D63]" : "border-[#CBDCD4]"}`} aria-current={index === currentStep ? "step" : undefined}><span className="font-mono text-xs text-[#5B746F]">{String(index + 1).padStart(2, "0")}</span><p className={`mt-1 text-sm font-bold ${index <= currentStep ? "text-[#173735]" : "text-[#71857E]"}`}>{label}</p></li>)}</ol>
         </section>
-        {report.latitude !== null && report.longitude !== null && <section className="mt-6"><ReportMap points={[{latitude: report.latitude, longitude: report.longitude, label: report.address}]} /></section>}
-        {report.photoUrl && <section className="mt-6"><h2 className="mb-3 text-lg font-semibold">Foto del reclamo</h2><a href={`/api/reports/${report.publicId}/photo`} target="_blank" rel="noreferrer"><Image src={`/api/reports/${report.publicId}/photo`} alt="Foto adjunta al reclamo ciudadano" width={800} height={600} unoptimized className="max-h-96 w-full rounded-2xl border border-zinc-800 object-contain" /></a></section>}
-        <a href="/reportar" className="mt-6 inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-900">
-          Hacer otro reporte
-        </a>
-      </div>
-    </main>
+
+        <section className="mt-8 grid gap-7 md:grid-cols-[minmax(0,1fr)_18rem]" aria-label="Detalles del reclamo">
+          <div className="surface p-6 sm:p-9"><h2 className="section-title">Lo que reportaste</h2><dl className="mt-7 grid gap-6"><div><dt className="text-sm font-semibold text-[#5B746F]">Problema</dt><dd className="mt-1 text-lg font-semibold">{categoryLabels[report.category]}</dd></div><div className="border-t border-[#CBDCD4] pt-5"><dt className="text-sm font-semibold text-[#5B746F]">Descripción</dt><dd className="mt-2 whitespace-pre-wrap leading-7">{report.description}</dd></div></dl></div>
+          <div className="surface p-6 sm:p-7"><h2 className="text-lg font-bold tracking-[-.03em]">Dónde y cuándo</h2><dl className="mt-6 grid gap-5"><div><dt className="text-sm text-[#5B746F]">Ubicación</dt><dd className="mt-1 font-semibold">{report.address}</dd></div><div className="border-t border-[#CBDCD4] pt-5"><dt className="text-sm text-[#5B746F]">Enviado</dt><dd className="mt-1 font-semibold"><time dateTime={report.createdAt.toISOString()}>{report.createdAt.toLocaleDateString("es-AR", { dateStyle: "long", timeZone: "America/Argentina/Buenos_Aires" })}</time></dd></div></dl></div>
+        </section>
+        {report.latitude !== null && report.longitude !== null && <section className="mt-8"><h2 className="mb-4 text-lg font-bold">Lugar del reporte</h2><ReportMap points={[{ latitude: report.latitude, longitude: report.longitude, label: report.address }]} /></section>}
+        {report.photoUrl && <section className="mt-8"><h2 className="mb-4 text-lg font-bold">Foto adjunta</h2><a href={`/api/reports/${report.publicId}/photo`} target="_blank" rel="noreferrer"><Image src={`/api/reports/${report.publicId}/photo`} alt="Foto adjunta al reclamo ciudadano" width={800} height={600} unoptimized className="max-h-96 w-full rounded-xl border border-[#CBDCD4] bg-white object-contain" /></a></section>}
+        <Link href="/reportar" className="civic-button civic-button-outline mt-9">Hacer otro reporte</Link>
+      </main>
+    </div>
   );
 }

@@ -1,29 +1,46 @@
 import Link from "next/link";
+import { SiteHeader } from "@/components/site-header";
+import { RouteArt } from "@/components/route-art";
+import { TrackingLookup } from "@/components/tracking-lookup";
 import { telegramBotUrl } from "@/lib/telegram";
+
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10 sm:px-10">
-      <header className="flex items-center justify-between border-b border-zinc-200 pb-6">
-        <Link href="/" className="text-xl font-bold tracking-tight text-zinc-950">ReportAR</Link>
-        <a href="/admin/login" className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50">Acceso municipal</a>
-      </header>
-      <section className="grid flex-1 gap-10 py-16 md:grid-cols-2 md:items-center">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-700">Tu ciudad, más cerca</p>
-          <h1 className="mt-4 max-w-xl text-5xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-6xl">Hagamos que cada reclamo encuentre respuesta.</h1>
-          <p className="mt-6 max-w-lg text-lg leading-8 text-zinc-600">Reportá problemas de tu barrio y seguí su evolución desde un solo lugar.</p>
-          <a href={telegramBotUrl} target="_blank" rel="noreferrer" className="mt-9 inline-flex rounded-xl bg-indigo-700 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-800">Reportar por Telegram ↗</a>
-          <a href="/reportar" className="mt-4 block text-sm font-semibold text-indigo-700">O completar el formulario web →</a>
-        </div>
-        <div className="rounded-3xl bg-[#eef0ff] p-8 sm:p-12">
-          <div className="rounded-2xl border border-white/80 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-indigo-700">ReportAR</p>
-            <p className="mt-4 text-2xl font-semibold text-zinc-950">Tu comunidad merece respuestas.</p>
-            <p className="mt-3 text-sm leading-6 text-zinc-600">Compartí una situación y ayudá al municipio a priorizar lo que pasa cerca tuyo.</p>
+    <div className="min-h-screen bg-[#F1F5F2]">
+      <SiteHeader />
+      <main>
+        <section className="site-shell grid gap-10 py-12 lg:grid-cols-[1fr_1.02fr] lg:items-center lg:gap-14 lg:py-20">
+          <div className="py-3">
+            <h1 className="display-title max-w-[10ch]">Lo que pasa en tu calle merece una respuesta.</h1>
+            <p className="body-lead mt-8 max-w-[34rem]">Un bache, una luminaria apagada, basura acumulada: contá qué pasa y seguí el reclamo desde el primer día.</p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <a href={telegramBotUrl} target="_blank" rel="noreferrer" className="civic-button civic-button-coral">Reportar por Telegram <span aria-hidden="true">↗</span></a>
+              <Link href="/reportar" className="civic-button civic-button-outline">Usar el formulario web</Link>
+            </div>
+            <p className="mt-5 text-sm text-[#5B746F]">No necesitás una cuenta para reportar.</p>
           </div>
-        </div>
-      </section>
-      <footer className="border-t border-zinc-200 py-5 text-xs text-zinc-500">ReportAR · Participación ciudadana</footer>
-    </main>
+          <RouteArt />
+        </section>
+
+        <section className="border-y border-[#CBDCD4] bg-white" aria-labelledby="how-it-works">
+          <div className="site-shell grid gap-8 py-12 md:grid-cols-[.8fr_1.2fr] md:gap-16 md:py-16">
+            <div><h2 id="how-it-works" className="section-title max-w-[13ch]">De tu barrio a quien puede resolverlo.</h2><p className="mt-4 max-w-sm leading-7 text-[#5B746F]">Cada reporte guarda una ubicación y un código para volver a consultarlo.</p></div>
+            <ol className="grid gap-0 sm:grid-cols-3">
+              <li className="border-t border-[#CBDCD4] py-4 sm:border-l sm:border-t-0 sm:py-1 sm:pl-6"><span className="font-mono text-sm text-[#116D63]">01</span><h3 className="mt-3 text-lg font-bold">Contá qué pasa</h3><p className="mt-2 text-sm leading-6 text-[#5B746F]">Elegí el problema y describilo con tus palabras.</p></li>
+              <li className="border-t border-[#CBDCD4] py-4 sm:border-l sm:border-t-0 sm:py-1 sm:pl-6"><span className="font-mono text-sm text-[#116D63]">02</span><h3 className="mt-3 text-lg font-bold">Marcá el lugar</h3><p className="mt-2 text-sm leading-6 text-[#5B746F]">Escribí la dirección o señalá un punto en el mapa.</p></li>
+              <li className="border-t border-[#CBDCD4] py-4 sm:border-l sm:border-t-0 sm:py-1 sm:pl-6"><span className="font-mono text-sm text-[#116D63]">03</span><h3 className="mt-3 text-lg font-bold">Seguí el estado</h3><p className="mt-2 text-sm leading-6 text-[#5B746F]">Guardá el código y volvé cuando quieras.</p></li>
+            </ol>
+          </div>
+        </section>
+
+        <section className="site-shell py-14 md:py-20" aria-labelledby="tracking-heading">
+          <div className="grid gap-8 rounded-[1.4rem] bg-[#DCECE5] p-6 sm:p-10 md:grid-cols-[.8fr_1.2fr] md:items-center md:gap-12">
+            <div><h2 id="tracking-heading" className="section-title">¿Ya hiciste un reporte?</h2><p className="mt-3 leading-7 text-[#4C6A62]">Ingresá el código que recibiste para ver cómo sigue.</p></div>
+            <TrackingLookup />
+          </div>
+        </section>
+      </main>
+      <footer className="site-footer bg-white"><div className="site-shell flex flex-wrap items-center justify-between gap-3 py-7 text-sm"><span>ReportAR · Reclamos ciudadanos</span><Link href="/admin/login" className="civic-link">Acceso municipal</Link></div></footer>
+    </div>
   );
 }

@@ -34,12 +34,12 @@ export function ReportMap({ points, onSelect }: {points: MapPoint[]; onSelect?: 
       if (disposed || !map.current || !layers.current) return;
       layers.current.clearLayers();
       for (const point of points) {
-        const marker = L.circleMarker([point.latitude, point.longitude], {radius: 9, color: "#6366f1", fillOpacity: 0.85}).addTo(layers.current);
+        const marker = L.circleMarker([point.latitude, point.longitude], {radius: 9, color: "#116d63", fillOpacity: 0.85}).addTo(layers.current);
         if (point.label) { const label = document.createElement("span"); label.textContent = point.label; marker.bindTooltip(label); }
       }
       if (points.length) map.current.fitBounds(L.latLngBounds(points.map(p => [p.latitude,p.longitude])), {maxZoom: 16, padding: [30,30]});
     });
     return () => {disposed = true;};
   }, [points, ready]);
-  return <div><div ref={container} aria-label={onSelect ? "Mapa: seleccioná la ubicación del problema" : "Mapa de reclamos"} className="relative z-0 h-72 w-full overflow-hidden rounded-xl border border-zinc-700" />{error && <p role="alert" className="mt-2 text-sm text-amber-600">{error}</p>}</div>;
+  return <div><div ref={container} aria-label={onSelect ? "Mapa: seleccioná la ubicación del problema" : "Mapa de reclamos"} className="map-frame" />{error && <p role="alert" className="mt-2 text-sm text-[#A43E30]">{error}</p>}</div>;
 }

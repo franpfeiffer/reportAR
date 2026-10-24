@@ -16,7 +16,7 @@ export function LogoutButton() {
   }
 
   return (
-    <button onClick={() => void handleLogout()} disabled={busy} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 disabled:opacity-60">
+    <button onClick={() => void handleLogout()} disabled={busy} className="rounded-lg border border-white/40 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-60">
       {busy ? "Cerrando sesión…" : "Cerrar sesión"}
     </button>
   );

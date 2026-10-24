@@ -27,7 +27,7 @@ export function OAuthLoginButtons() {
         type="button"
         onClick={() => void start("google")}
         disabled={loading !== null}
-        className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60"
+        className="civic-button civic-button-primary w-full !justify-start !gap-4 !px-5 disabled:cursor-wait"
       >
         <GoogleIcon />
         {loading === "google" ? "Conectando…" : "Continuar con Google"}
@@ -37,12 +37,13 @@ export function OAuthLoginButtons() {
         onClick={() => void start("vercel")}
         disabled={loading !== null || !vercelEnabled}
         title={vercelEnabled ? undefined : "Vercel OAuth se activará al configurar sus credenciales."}
-        className="flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="civic-button civic-button-outline w-full !justify-start !gap-4 !px-5"
       >
         <VercelIcon />
         {loading === "vercel" ? "Conectando…" : "Continuar con Vercel"}
       </button>
-      {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {!vercelEnabled && <p className="text-xs text-[#5B746F]">El ingreso con Vercel estará disponible próximamente.</p>}
+      {error && <p role="alert" className="rounded-lg bg-[#FFEAE4] px-4 py-3 text-sm text-[#9D382B]">{error}</p>}
     </div>
   );
 }
