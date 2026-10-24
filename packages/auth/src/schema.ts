@@ -12,4 +12,30 @@ export const userProfiles = pgTable("user_profiles", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const reportCategory = pgEnum("report_category", [
+  "BACHE",
+  "ALUMBRADO",
+  "BASURA",
+  "ARBOLADO",
+  "OTRO",
+]);
+
+export const reportStatus = pgEnum("report_status", [
+  "RECIBIDO",
+  "EN_REVISION",
+  "RESUELTO",
+]);
+
+export const citizenReports = pgTable("citizen_reports", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  publicId: uuid("public_id").notNull().defaultRandom().unique(),
+  category: reportCategory("category").notNull(),
+  address: text("address").notNull(),
+  description: text("description").notNull(),
+  status: reportStatus("status").notNull().default("RECIBIDO"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type UserProfile = typeof userProfiles.$inferSelect;
+export type CitizenReport = typeof citizenReports.$inferSelect;
