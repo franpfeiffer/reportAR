@@ -20,6 +20,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^1.2.0
         version: 1.2.0
+      '@next/env':
+        specifier: 16.4.3
+        version: 16.4.3
       '@reportar/auth':
         specifier: workspace:*
         version: link:packages/auth
