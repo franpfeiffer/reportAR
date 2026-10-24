@@ -1,0 +1,17 @@
+{
+  "name": "@reportar/auth",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./db": "./src/db.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "peerDependencies": {
+    "@neondatabase/auth": "*",
+    "@neondatabase/serverless": "*",
+    "drizzle-orm": "*",
+    "next": "*"
+  }
+}
