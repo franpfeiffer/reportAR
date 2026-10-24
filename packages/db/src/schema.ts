@@ -61,5 +61,12 @@ export const reverseGeocodeGate = pgTable("reverse_geocode_gate", {
   lastRequestAt: timestamp("last_request_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const forwardGeocodeCache = pgTable("forward_geocode_cache", {
+  queryKey: text("query_key").primaryKey(),
+  latitude: doublePrecision("latitude").notNull(),
+  longitude: doublePrecision("longitude").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type CitizenReport = typeof citizenReports.$inferSelect;

@@ -16,7 +16,7 @@ export function ReportMap({ points, onSelect }: {points: MapPoint[]; onSelect?: 
     let resize: ResizeObserver | undefined;
     import("leaflet").then(L => {
       if (disposed || !container.current) return;
-      const instance = L.map(container.current, { scrollWheelZoom: false }).setView([-31.4201, -64.1888], 12);
+      const instance = L.map(container.current, { scrollWheelZoom: false }).setView([-38.4161, -63.6167], 4);
       map.current = instance;
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(instance);
       layers.current = L.layerGroup().addTo(instance);

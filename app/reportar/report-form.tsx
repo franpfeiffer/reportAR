@@ -14,11 +14,16 @@ const MAX_PHOTO_BYTES = 100 * 1024 * 1024;
 
 export function ReportForm() {
   const [location, setLocation] = useState<MapPoint | null>(null);
+  const locationValue = useRef<MapPoint | null>(null);
   const points = useMemo(() => location ? [location] : [], [location]);
   const [locationError, setLocationError] = useState("");
   const [address, setAddress] = useState("");
   const [addressHint, setAddressHint] = useState("");
   const addressEditVersion = useRef(0);
+  const forwardSearch = useRef<AbortController | null>(null);
+  const skipReverseGeocodeFor = useRef<string | null>(null);
+  const lastForwardSearch = useRef("");
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const previewUrl = useRef<string | null>(null);
@@ -39,13 +44,72 @@ export function ReportForm() {
     setPhotoError("");
   }
 
-  function chooseLocation(point: MapPoint | null) {
+  function chooseLocation(point: MapPoint | null, fromAddressSearch = false) {
+    forwardSearch.current?.abort();
+    forwardSearch.current = null;
+    locationValue.current = point;
+    skipReverseGeocodeFor.current = fromAddressSearch && point ? `${point.latitude},${point.longitude}` : null;
     setLocation(point);
-    setAddressHint(point ? "Buscando dirección aproximada…" : "");
+    setAddressHint(point ? fromAddressSearch ? "Punto aproximado ubicado. Revisá el marcador y la altura en el mapa." : "Punto marcado; buscando la dirección aproximada…" : "");
+  }
+
+  function handleAddressChange(value: string) {
+    addressEditVersion.current += 1;
+    forwardSearch.current?.abort();
+    forwardSearch.current = null;
+    lastForwardSearch.current = "";
+    skipReverseGeocodeFor.current = null;
+    locationValue.current = null;
+    setLocation(null);
+    setAddress(value);
+    setAddressHint("");
+    setIsSearchingAddress(false);
+  }
+
+  async function locateAddress() {
+    const query = address.trim();
+    if (query.length < 5) return;
+    if (query === lastForwardSearch.current && location) return;
+    forwardSearch.current?.abort();
+    const controller = new AbortController();
+    forwardSearch.current = controller;
+    const editVersion = addressEditVersion.current;
+    setIsSearchingAddress(true);
+    setAddressHint("Buscando esa dirección en el mapa…");
+    try {
+      const url = `/api/geocode/search?q=${encodeURIComponent(query)}`;
+      let response = await fetch(url, { signal: controller.signal });
+      if (response.status === 429) {
+        await new Promise(resolve => window.setTimeout(resolve, 1200));
+        if (controller.signal.aborted) return;
+        response = await fetch(url, { signal: controller.signal });
+      }
+      const result = await response.json() as { latitude?: number; longitude?: number; error?: string };
+      if (controller.signal.aborted || addressEditVersion.current !== editVersion) return;
+      if (!response.ok || !Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) {
+        setAddressHint(result.error ?? "No encontramos esa dirección. Marcá el punto en el mapa.");
+        return;
+      }
+      const point = { latitude: result.latitude as number, longitude: result.longitude as number, label: query };
+      lastForwardSearch.current = query;
+      chooseLocation(point, true);
+    } catch {
+      if (!controller.signal.aborted) setAddressHint("No pudimos buscar esa dirección. Marcá el punto en el mapa.");
+    } finally {
+      if (forwardSearch.current === controller) {
+        forwardSearch.current = null;
+        setIsSearchingAddress(false);
+      }
+    }
   }
 
   useEffect(() => {
     if (!location) return;
+    const pointKey = `${location.latitude},${location.longitude}`;
+    if (skipReverseGeocodeFor.current === pointKey) {
+      skipReverseGeocodeFor.current = null;
+      return;
+    }
     const controller = new AbortController();
     const editVersion = addressEditVersion.current;
     const selected = location;
@@ -113,14 +177,15 @@ export function ReportForm() {
     setError("");
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
+    const selectedLocation = locationValue.current;
     if (photo && photo.size > MAX_PHOTO_BYTES) { setError("La foto no puede superar los 100 MB."); setIsSubmitting(false); return; }
     try {
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          latitude: location?.latitude ?? null,
-          longitude: location?.longitude ?? null,
+          latitude: selectedLocation?.latitude ?? null,
+          longitude: selectedLocation?.longitude ?? null,
           category: formData.get("category"),
           address: formData.get("address"),
           description: formData.get("description"),
@@ -173,7 +238,7 @@ export function ReportForm() {
 
       <section className="border-t border-[#CBDCD4] pt-8">
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Dónde ocurre?</h2>
-        <div className="mt-5"><label htmlFor="address" className="form-label">Dirección o referencia</label><Input id="address" name="address" type="text" autoComplete="street-address" placeholder="Calle, altura y barrio" minLength={5} maxLength={200} required className="field-control" value={address} onChange={event => { addressEditVersion.current += 1; setAddress(event.target.value); setAddressHint(""); }} />{addressHint && <p role="status" className="form-help">{addressHint} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap</a></p>}</div>
+        <div className="mt-5"><label htmlFor="address" className="form-label">Dirección o referencia</label><Input id="address" name="address" type="text" autoComplete="street-address" placeholder="Calle, altura, ciudad (ej. Córdoba 1900, Rosario)" minLength={5} maxLength={200} required className="field-control" value={address} onBlur={() => void locateAddress()} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void locateAddress(); } }} onChange={event => handleAddressChange(event.target.value)} /><p className="form-help">Para ubicar una dirección escrita, agregá la ciudad. Si preferís, podés usar tu ubicación actual.</p><div className="mt-2 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={() => void locateAddress()} disabled={isSearchingAddress || address.trim().length < 5} className="h-9 rounded-lg px-3 text-sm">{isSearchingAddress ? "Buscando…" : "Ubicar dirección en el mapa"}</Button>{addressHint && <p role="status" className="form-help !mt-0">{addressHint} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap</a></p>}</div></div>
         <div className="mt-6"><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><p className="form-label !mb-0">Marcá el punto en el mapa</p><span className="text-xs text-[#5B746F]">Opcional</span></div><ReportMap points={points} onSelect={chooseLocation} /><div className="mt-3 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={locate} className="h-10 rounded-lg px-4">Usar mi ubicación</Button>{location && <button type="button" className="civic-link text-sm" onClick={() => chooseLocation(null)}>Quitar punto</button>}</div><p className="form-help">{location ? `Punto elegido: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : "Tocá el mapa para señalar el lugar exacto."}</p>{locationError && <p role="alert" className="mt-2 text-sm text-[#A43E30]">{locationError}</p>}</div>
       </section>
 
@@ -187,7 +252,7 @@ export function ReportForm() {
 
       <div className="border-t border-[#CBDCD4] pt-7">
         {error && <p role="alert" className="mb-5 rounded-lg bg-[#FFEAE4] px-4 py-3 text-sm text-[#9D382B]">{error}</p>}
-        <Button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-lg px-6 font-bold sm:w-auto">{isSubmitting ? "Enviando reporte…" : "Enviar reporte"}</Button>
+        <Button type="submit" disabled={isSubmitting || isSearchingAddress} className="h-12 w-full rounded-lg px-6 font-bold sm:w-auto">{isSubmitting ? "Enviando reporte…" : isSearchingAddress ? "Buscando dirección…" : "Enviar reporte"}</Button>
         <p className="form-help mt-3">El reporte es público. No hace falta una cuenta.</p>
       </div>
     </form>

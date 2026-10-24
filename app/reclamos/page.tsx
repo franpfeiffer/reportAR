@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@reportar/db";
 import { citizenReports } from "@reportar/db/schema";
 import { ReportMap } from "@/components/report-map";
