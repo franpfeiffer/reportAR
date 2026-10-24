@@ -1,20 +1,27 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike } from "drizzle-orm";
 import { db } from "@reportar/db";
 import { citizenReports } from "@reportar/db/schema";
 import { ReportMap } from "@/components/report-map";
+import { ReportLocationFilters } from "@/components/report-location-filters";
 import { SiteHeader } from "@/components/site-header";
 import { StatusPill } from "@/components/status-pill";
 import { categoryLabels, statusLabels, type ReportStatus } from "@/lib/reports/validation";
 
 export const instant = false;
 
-export default async function PublicReportsPage({ searchParams }: { searchParams: Promise<{ page?: string; status?: string }> }) {
+export default async function PublicReportsPage({ searchParams }: { searchParams: Promise<{ page?: string; status?: string; province?: string; city?: string }> }) {
   await connection();
   const query = await searchParams;
   const page = Math.max(1, Math.min(10000, Number.parseInt(query.page || "1", 10) || 1));
   const status = query.status && Object.hasOwn(statusLabels, query.status) ? query.status as ReportStatus : undefined;
+  const province = typeof query.province === "string" && query.province.length <= 100 ? query.province.trim() : "";
+  const city = typeof query.city === "string" && query.city.length <= 100 ? query.city.trim() : "";
+  const escapeLike = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+  const addressSuffix = city && province
+    ? `%, ${escapeLike(city)}, ${escapeLike(province)}`
+    : province ? `%, ${escapeLike(province)}` : undefined;
   const rows = await db.select({
     id: citizenReports.id,
     publicId: citizenReports.publicId,
@@ -26,14 +33,26 @@ export default async function PublicReportsPage({ searchParams }: { searchParams
     status: citizenReports.status,
     createdAt: citizenReports.createdAt,
   }).from(citizenReports)
-    .where(status ? eq(citizenReports.status, status) : undefined)
+    .where(and(
+      status ? eq(citizenReports.status, status) : undefined,
+      addressSuffix ? ilike(citizenReports.address, addressSuffix) : undefined,
+    ))
     .orderBy(desc(citizenReports.createdAt), desc(citizenReports.id))
     .limit(51).offset((page - 1) * 50);
   const reports = rows.slice(0, 50);
   const points = reports.flatMap(report => report.latitude !== null && report.longitude !== null
     ? [{ latitude: report.latitude, longitude: report.longitude, label: `${categoryLabels[report.category]}: ${report.address}` }]
     : []);
-  const pageUrl = (n: number) => `/reclamos?page=${n}${status ? `&status=${status}` : ""}`;
+  const queryUrl = (values: { page?: number; status?: string }) => {
+    const params = new URLSearchParams();
+    if (values.page) params.set("page", String(values.page));
+    if (values.status) params.set("status", values.status);
+    if (province) params.set("province", province);
+    if (city) params.set("city", city);
+    const search = params.toString();
+    return `/reclamos${search ? `?${search}` : ""}`;
+  };
+  const pageUrl = (n: number) => queryUrl({ page: n, status });
 
   return (
     <div className="min-h-screen bg-[#F1F5F2]">
@@ -44,9 +63,11 @@ export default async function PublicReportsPage({ searchParams }: { searchParams
           <Link href="/reportar" className="civic-button civic-button-primary">Hacer un reporte</Link>
         </div>
 
+        <ReportLocationFilters province={province} city={city} status={status ?? ""} />
+
         <section className="mt-8 flex flex-wrap items-center gap-2" aria-label="Filtrar reclamos por estado">
-          <Link href="/reclamos" aria-current={!status ? "page" : undefined} className={`rounded-full border px-4 py-2 text-sm font-semibold ${!status ? "border-[#116D63] bg-[#116D63] text-white" : "border-[#CBDCD4] bg-white text-[#42615B]"}`}>Todos</Link>
-          {Object.entries(statusLabels).map(([value, label]) => <Link key={value} href={`/reclamos?status=${value}`} aria-current={status === value ? "page" : undefined} className={`rounded-full border px-4 py-2 text-sm font-semibold ${status === value ? "border-[#116D63] bg-[#116D63] text-white" : "border-[#CBDCD4] bg-white text-[#42615B]"}`}>{label}</Link>)}
+          <Link href={queryUrl({})} aria-current={!status ? "page" : undefined} className={`rounded-full border px-4 py-2 text-sm font-semibold ${!status ? "border-[#116D63] bg-[#116D63] text-white" : "border-[#CBDCD4] bg-white text-[#42615B]"}`}>Todos</Link>
+          {Object.entries(statusLabels).map(([value, label]) => <Link key={value} href={queryUrl({ status: value })} aria-current={status === value ? "page" : undefined} className={`rounded-full border px-4 py-2 text-sm font-semibold ${status === value ? "border-[#116D63] bg-[#116D63] text-white" : "border-[#CBDCD4] bg-white text-[#42615B]"}`}>{label}</Link>)}
         </section>
 
         {points.length > 0 && <section className="mt-8" aria-label="Mapa de reclamos"><div className="mb-3 flex items-baseline justify-between gap-3"><h2 className="section-title">En el mapa</h2><span className="text-sm text-[#5B746F]">{points.length} ubicaciones en esta página</span></div><ReportMap points={points} /></section>}

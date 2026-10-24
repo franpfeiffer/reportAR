@@ -67,7 +67,8 @@ body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var
 .status-pill::before { content: ""; width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; }
 .status-recibido { background: #e5f1eb; color: #236f57; }
 .status-en-revision { background: #fff0d8; color: #9a5d16; }
-.status-resuelto { background: #dcece8; color: #116d63; }
+.status-resuelto { border: 1px solid #4caf70; background: #d9f5e2; color: #14532d; font-weight: 800; }
+.status-resuelto::before { display: grid; width: 1rem; height: 1rem; place-items: center; border-radius: 50%; background: #188246; color: white; content: "✓"; font-size: .68rem; line-height: 1; }
 .map-frame { position: relative; z-index: 0; width: 100%; height: 20rem; overflow: hidden; border: 1px solid var(--line); border-radius: .95rem; background: #dce8de; }
 .leaflet-container { font-family: var(--font-public), Arial, sans-serif; }
 @media (prefers-reduced-motion: reduce) {
