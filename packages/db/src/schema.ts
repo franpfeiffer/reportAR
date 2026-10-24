@@ -34,6 +34,15 @@ export const reportClassificationStatus = pgEnum("report_classification_status",
   "REVIEWED",
 ]);
 
+export const reportUrgency = pgEnum("report_urgency", ["URGENTE", "NO_URGENTE"]);
+
+export const reportUrgencyClassificationStatus = pgEnum("report_urgency_classification_status", [
+  "AUTO_ASSIGNED",
+  "NEEDS_REVIEW",
+  "UNAVAILABLE",
+  "REVIEWED",
+]);
+
 export const citizenReports = pgTable("citizen_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   publicId: uuid("public_id").notNull().defaultRandom().unique(),
@@ -43,6 +52,11 @@ export const citizenReports = pgTable("citizen_reports", {
   classificationProbability: doublePrecision("classification_probability"),
   classificationStatus: reportClassificationStatus("classification_status"),
   classificationModel: text("classification_model"),
+  urgency: reportUrgency("urgency"),
+  suggestedUrgency: reportUrgency("suggested_urgency"),
+  urgentProbability: doublePrecision("urgent_probability"),
+  urgencyClassificationStatus: reportUrgencyClassificationStatus("urgency_classification_status"),
+  urgencyClassificationModel: text("urgency_classification_model"),
   address: text("address").notNull(),
   description: text("description").notNull(),
   latitude: doublePrecision("latitude"),
@@ -84,3 +98,5 @@ export const forwardGeocodeCache = pgTable("forward_geocode_cache", {
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type CitizenReport = typeof citizenReports.$inferSelect;
 export type ClassificationStatus = typeof reportClassificationStatus.enumValues[number];
+export type ReportUrgency = typeof reportUrgency.enumValues[number];
+export type UrgencyClassificationStatus = typeof reportUrgencyClassificationStatus.enumValues[number];

@@ -303,7 +303,7 @@ export function ReportForm() {
       <section>
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Qué pasa?</h2>
         <div className="mt-5"><label htmlFor="category" className="form-label">Tipo de problema</label><select id="category" name="category" className="field-control" defaultValue="" required><option value="" disabled>Elegí una categoría</option><option value="BACHE">Bache o vereda rota</option><option value="INUNDACION">Inundación</option><option value="ALUMBRADO">Alumbrado público</option><option value="BASURA">Basura o limpieza</option><option value="ARBOLADO">Árboles y espacios verdes</option><option value="OTRO">Otro problema</option></select></div>
-        <div className="mt-5"><label htmlFor="description" className="form-label">Describí la situación</label><Textarea id="description" name="description" placeholder="Por ejemplo: la luminaria de la esquina no funciona desde el martes" rows={5} required className="field-control min-h-36 resize-y" /><p className="form-help">Un detalle concreto ayuda a ubicar y entender el problema.</p></div>
+        <div className="mt-5"><label htmlFor="description" className="form-label">Describí la situación</label><Textarea id="description" name="description" placeholder="Por ejemplo: la luminaria de la esquina no funciona desde el martes" rows={5} required className="field-control min-h-36 resize-y" /><p className="form-help">Contá también si hay peligro inmediato, daños en curso, tránsito o acceso bloqueado, o un servicio esencial interrumpido. Eso ayuda a priorizar la reparación.</p></div>
       </section>
 
       <section className="border-t border-[#CBDCD4] pt-8">
@@ -323,7 +323,7 @@ export function ReportForm() {
       <div className="border-t border-[#CBDCD4] pt-7">
         {error && <p role="alert" className="mb-5 rounded-lg bg-[#FFEAE4] px-4 py-3 text-sm text-[#9D382B]">{error}</p>}
         <Button type="submit" disabled={isSubmitting || isSearchingAddress} className="h-12 w-full rounded-lg px-6 font-bold sm:w-auto">{isSubmitting ? "Enviando reporte…" : isSearchingAddress ? "Buscando dirección…" : "Enviar reporte"}</Button>
-        <p className="form-help mt-3">El reporte es público. No hace falta una cuenta. Usamos TypeSafe/JEV para clasificar la descripción junto con la categoría que elegiste; la dirección y la foto no se envían al clasificador.</p>
+        <p className="form-help mt-3">El reporte es público. No hace falta una cuenta. Usamos TypeSafe/JEV para estimar si la reparación es urgente según la descripción y la categoría que elegiste; la dirección y la foto no se envían al clasificador. La urgencia dudosa se revisa en el panel municipal.</p>
       </div>
     </form>
   );

@@ -17,7 +17,7 @@ Respuesta sin foto: `{ "id": "<public_id>", "status": "received" }`. Con foto ag
 }
 ```
 
-`photo` puede ser null u omitirse. El bot solo envía una foto adjunta al mismo mensaje que contiene el reclamo; álbumes e imágenes enviadas como documentos quedan fuera de esta versión. Cuando existe `telegram_file_id`, reportAR lo descarga y guarda la imagen en el bucket privado `report-images`; la página de seguimiento la sirve mediante el endpoint de fotos. Las descargas están limitadas a 20 MB y se valida tipo y formato real. Si falla la operación de foto, el reclamo permanece guardado y la respuesta lleva `photo_status: "failed"`. Categorías: bache, inundacion, alumbrado, basura, otro. Descripción: 10–2000 caracteres; dirección: 5–300. Límite del cuerpo: 20.000 bytes, también sin Content-Length. Errores: 401 sin autorización; 400 JSON inválido; 422 validación o idempotencia inválida; 413 cuerpo excesivo; 503 configuración ausente o fallo de persistencia. No registrar tokens ni payloads en logs.
+`photo` puede ser null u omitirse. El bot solo envía una foto adjunta al mismo mensaje que contiene el reclamo; álbumes e imágenes enviadas como documentos quedan fuera de esta versión. Cuando existe `telegram_file_id`, reportAR lo descarga y guarda la imagen en el bucket privado `report-images`; la página de seguimiento la sirve mediante el endpoint de fotos. Las descargas están limitadas a 20 MB y se valida tipo y formato real. Si falla la operación de foto, el reclamo permanece guardado y la respuesta lleva `photo_status: "failed"`. Categorías: bache, inundacion, alumbrado, basura, arbolado, otro. Descripción: 10–2000 caracteres; dirección: 5–300. Límite del cuerpo: 20.000 bytes, también sin Content-Length. Errores: 401 sin autorización; 400 JSON inválido; 422 validación o idempotencia inválida; 413 cuerpo excesivo; 503 configuración ausente o fallo de persistencia. No registrar tokens ni payloads en logs.
 
 ## Base
 
@@ -69,7 +69,7 @@ El JSON del ejemplo anterior es el cuerpo completo. `source` debe ser exactament
 | --- | --- |
 | source | String literal `telegram`, obligatorio. |
 | external_id | `telegram:<message.chat.id>:<message.message_id>`; regex `^telegram:-?\d+:\d+$`; máximo 150 caracteres. |
-| category | `bache`, `inundacion`, `alumbrado`, `basura` u `otro`. |
+| category | `bache`, `inundacion`, `alumbrado`, `basura`, `arbolado` u `otro`. |
 | description | String; mínimo 10 caracteres después de trim, máximo 2000 antes de trim; se guarda con trim. |
 | address | String; mínimo 5 caracteres después de trim, máximo 300 antes de trim; se guarda con trim. |
 | reporter.telegram_user_id | `String(message.from.id)`; entre 1 y 30 dígitos, sin signo. |
@@ -122,3 +122,9 @@ Una URL incorrecta, proxy o protección de despliegue puede devolver otros códi
 ## Código del bot en este repositorio
 
 El bot y el workflow están en `integrations/telegram-bot/`. Ejecutar `npm --prefix integrations/telegram-bot test` para las pruebas y `npm --prefix integrations/telegram-bot run build:workflow` para regenerar el JSON. El paquete se mantiene fuera del workspace `packages/*` de la app. El endpoint mock sigue siendo solo local; no desplegarlo en Vercel.
+
+## Criticidad de reparación con JEV
+
+El servidor evalúa la urgencia tanto para reportes web como de Telegram y conserva la categoría declarada. Solo envía a TypeSafe la descripción y la categoría. Con probabilidad de urgencia ≥ 0,70 asigna `URGENTE`; con probabilidad ≤ 0,30 asigna `NO_URGENTE`. Los valores intermedios o fallos del proveedor quedan pendientes de revisión municipal. Los reintentos de Telegram no vuelven a clasificar el reporte.
+
+Aplicar `drizzle/0009_jev_urgency_classification.sql` antes de desplegar el código de criticidad. La migración agrega los campos de urgencia y marca los reportes existentes para revisión. `TYPESAFE_API_KEY` se configura únicamente en el servidor de reportAR.

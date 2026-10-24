@@ -6,11 +6,13 @@ type GeographyOption = { id: string; name: string };
 
 export function ReportLocationFilters({ province, city, status }: { province: string; city: string; status: string }) {
   const [provinces, setProvinces] = useState<GeographyOption[]>([]);
-  const [localities, setLocalities] = useState<GeographyOption[]>([]);
+  const [localityResult, setLocalityResult] = useState<{ province: string; options: GeographyOption[] } | null>(null);
   const [selectedProvince, setSelectedProvince] = useState(province);
   const [selectedCity, setSelectedCity] = useState(city);
   const [loadingProvinces, setLoadingProvinces] = useState(true);
-  const [loadingLocalities, setLoadingLocalities] = useState(false);
+  const provinceOption = provinces.find(option => option.name === selectedProvince);
+  const localities = localityResult?.province === selectedProvince ? localityResult.options : [];
+  const loadingLocalities = Boolean(selectedProvince && (loadingProvinces || (provinceOption && localityResult?.province !== selectedProvince)));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -26,24 +28,17 @@ export function ReportLocationFilters({ province, city, status }: { province: st
   }, []);
 
   useEffect(() => {
-    const provinceOption = provinces.find(option => option.name === selectedProvince);
-    if (!provinceOption) {
-      setLocalities([]);
-      setLoadingLocalities(false);
-      return;
-    }
+    if (!provinceOption) return;
     const controller = new AbortController();
-    setLoadingLocalities(true);
     fetch(`/api/geography/localities?province=${encodeURIComponent(provinceOption.id)}`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error("No pudimos cargar las ciudades.");
         const data = await response.json() as { localities?: GeographyOption[] };
-        setLocalities(data.localities ?? []);
+        if (!controller.signal.aborted) setLocalityResult({ province: selectedProvince, options: data.localities ?? [] });
       })
-      .catch(() => { if (!controller.signal.aborted) setLocalities([]); })
-      .finally(() => { if (!controller.signal.aborted) setLoadingLocalities(false); });
+      .catch(() => { if (!controller.signal.aborted) setLocalityResult({ province: selectedProvince, options: [] }); });
     return () => controller.abort();
-  }, [provinces, selectedProvince]);
+  }, [provinceOption, selectedProvince]);
 
   return (
     <form action="/reclamos" method="get" className="surface mt-8 grid gap-4 p-5 sm:grid-cols-[1fr_1fr_auto] sm:items-end sm:p-6" aria-label="Filtrar por ubicación">

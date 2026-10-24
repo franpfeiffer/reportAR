@@ -72,7 +72,7 @@ Referencias: [Telegram en n8n](https://docs.n8n.io/integrations/builtin/app-node
 El workflow listo para conectar es `n8n/reportes-municipales.json` (generado por `npm run build:workflow`). El archivo histórico `reportes-municipales-mock.json` es solo demostrativo y no debe activarse para persistencia.
 
 1. Desplegar reportAR en Vercel con DATABASE_URL y REPORTS_API_TOKEN configurados del lado servidor. El token generado está en el `.env` ignorado de la app; no pegarlo en el JSON del workflow ni en Git.
-2. Importar el workflow nuevo en n8n. En Guardar reporte, establecer la URL HTTPS completa `https://<dominio-vercel>/api/bot/reports`. La expresión inicial usa `$vars.REPORTAR_API_URL` sin barra final; si la edición de n8n no admite Variables, reemplazarla directamente por la URL completa.
+2. Importar el workflow nuevo en n8n. En Variables, definir `REPORTAR_BASE_URL` con el origen HTTPS público confirmado del proyecto Vercel, sin ruta ni barra final. El nodo añade `/api/bot/reports`. El workflow queda inactivo hasta confirmar el despliegue y el dominio.
 3. Crear una credencial Header Auth: nombre `Authorization`, valor `Bearer <REPORTS_API_TOKEN>`. Seleccionarla en Guardar reporte. Configurar la misma credencial Telegram en todos los nodos Telegram.
 4. Desactivar el workflow anterior y activar el nuevo únicamente con URL y credenciales reales. Telegram admite un único webhook por bot.
 5. Enviar un reclamo de prueba y comprobar su ID en `/reclamo/<id>` y en administración. Reejecutar el mismo payload debe devolver el mismo ID. Un mensaje nuevo de Telegram tiene otro external_id y crea otro reclamo.
@@ -81,4 +81,4 @@ El workflow reintenta hasta tres veces guardar la foto, siempre con la misma cla
 
 El bot usa POST `/api/bot/reports`, Authorization Bearer y el header Idempotency-Key igual a `report.external_id`. El endpoint local `src/mock-api.js` sigue siendo una herramienta de desarrollo y no es el endpoint publicado. No activar el workflow generado sin completar la configuración.
 
-La app clasifica los reportes web y de Telegram con TypeSafe/JEV en el servidor. El clasificador recibe la descripción y la categoría declarada, sin dirección, fotos ni identificadores. Si la probabilidad de la categoría principal es menor que 0.70 o el servicio no responde, el reporte se conserva y queda para revisión municipal.
+La app estima la urgencia de reparación de los reportes web y de Telegram con TypeSafe/JEV en el servidor; no cambia la categoría elegida por quien reporta. El clasificador recibe la descripción y la categoría declarada, sin dirección, fotos ni identificadores. Si la probabilidad de urgencia es mayor que 0,30 y menor que 0,70, o el servicio no responde, el reporte queda para revisión municipal.

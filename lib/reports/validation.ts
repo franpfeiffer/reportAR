@@ -2,8 +2,10 @@ export const categoryLabels = {
   BACHE: "Bache o vereda rota", INUNDACION: "Inundación", ALUMBRADO: "Alumbrado público", BASURA: "Basura o limpieza",
   ARBOLADO: "Árboles y espacios verdes", OTRO: "Otro problema",
 } as const;
+export const urgencyLabels = { URGENTE: "Urgente", NO_URGENTE: "No urgente" } as const;
 export const statusLabels = { RECIBIDO: "Recibido", EN_REVISION: "En revisión", RESUELTO: "Resuelto" } as const;
 export type Category = keyof typeof categoryLabels;
+export type Urgency = keyof typeof urgencyLabels;
 export type ReportStatus = keyof typeof statusLabels;
 export const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 export function isRecord(value: unknown): value is Record<string, unknown> {

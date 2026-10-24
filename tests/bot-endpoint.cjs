@@ -53,8 +53,8 @@ const db={
  }}),
 };
 const classification={
- unavailableClassification:category=>({category,declaredCategory:category,suggestedCategory:null,classificationProbability:null,classificationStatus:'UNAVAILABLE',classificationModel:null}),
- classifyReport:async(_description,category)=>{classifierCalls++;return {category:'INUNDACION',declaredCategory:category,suggestedCategory:'INUNDACION',classificationProbability:0.82,classificationStatus:'AUTO_ASSIGNED',classificationModel:'jev-test'};},
+ unavailableClassification:declaredCategory=>({declaredCategory,urgency:null,suggestedUrgency:null,urgentProbability:null,urgencyClassificationStatus:'UNAVAILABLE',urgencyClassificationModel:null}),
+ classifyReport:async(_description,declaredCategory)=>{classifierCalls++;return {declaredCategory,urgency:'URGENTE',suggestedUrgency:'URGENTE',urgentProbability:0.82,urgencyClassificationStatus:'AUTO_ASSIGNED',urgencyClassificationModel:'jev-test'};},
 };
 const photoStorage={storeTelegramPhoto:async reportId=>{
  photoStorageCalls++;
@@ -70,7 +70,7 @@ async function send(body=payload,extra={}){return route.POST(new Request('http:/
  assert.equal((await send(payload,{'idempotency-key':'bad'})).status,422);
  assert.equal((await send('x'.repeat(20001))).status,413);
  const created=await send();const createdBody=await created.json();assert.equal(created.status,201);assert.deepEqual({...createdBody},{id:idFor(1),status:'received',photo_status:'stored'});
- const stored=reports.get(payload.external_id);assert.equal(stored.telegramFileId,'large-photo');assert.equal(stored.category,'INUNDACION');assert.equal(stored.classificationStatus,'AUTO_ASSIGNED');assert.equal(stored.photoStorageKey,`reports/${idFor(1)}/telegram-abcdefabcdefabcdefabcdef.jpg`);assert.equal(classifierCalls,1);
+ const stored=reports.get(payload.external_id);assert.equal(stored.telegramFileId,'large-photo');assert.equal(stored.category,'INUNDACION');assert.equal(stored.urgency,'URGENTE');assert.equal(stored.urgencyClassificationStatus,'AUTO_ASSIGNED');assert.equal(stored.declaredCategory,'INUNDACION');assert.equal(stored.photoStorageKey,`reports/${idFor(1)}/telegram-abcdefabcdefabcdefabcdef.jpg`);assert.equal(classifierCalls,1);
  const changedDuplicate=await send({...payload,description:'Texto cambiado en el reintento',photo:{telegram_file_id:'different-photo'}});assert.equal(changedDuplicate.status,200);assert.deepEqual(await changedDuplicate.json(),{id:idFor(1),status:'received',photo_status:'stored'});assert.equal(stored.description,'Agua acumulada en la esquina');assert.equal(stored.telegramFileId,'large-photo');assert.equal(photoStorageCalls,1);assert.equal(insertCalls,1);assert.equal(classifierCalls,1);
  const retryPayload={...payload,external_id:'telegram:124:43',reporter:{...payload.reporter,telegram_chat_id:'124'},photo:{telegram_file_id:'retry-photo'}};
  photoStorageFailures=1;
