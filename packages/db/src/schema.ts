@@ -14,6 +14,7 @@ export const userProfiles = pgTable("user_profiles", {
 
 export const reportCategory = pgEnum("report_category", [
   "BACHE",
+  "INUNDACION",
   "ALUMBRADO",
   "BASURA",
   "ARBOLADO",
@@ -38,6 +39,11 @@ export const citizenReports = pgTable("citizen_reports", {
   photoContentType: text("photo_content_type"),
   photoFilename: text("photo_filename"),
   photoUploadTokenHash: text("photo_upload_token_hash"),
+  externalId: text("external_id").unique(),
+  telegramUserId: text("telegram_user_id"),
+  telegramChatId: text("telegram_chat_id"),
+  telegramFileId: text("telegram_file_id"),
+  reportedAt: timestamp("reported_at", { withTimezone: true }),
   source: text("source").notNull().default("WEB"),
   status: reportStatus("status").notNull().default("RECIBIDO"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

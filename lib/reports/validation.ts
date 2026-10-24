@@ -1,5 +1,5 @@
 export const categoryLabels = {
-  BACHE: "Bache o vereda rota", ALUMBRADO: "Alumbrado público", BASURA: "Basura o limpieza",
+  BACHE: "Bache o vereda rota", INUNDACION: "Inundación", ALUMBRADO: "Alumbrado público", BASURA: "Basura o limpieza",
   ARBOLADO: "Árboles y espacios verdes", OTRO: "Otro problema",
 } as const;
 export const statusLabels = { RECIBIDO: "Recibido", EN_REVISION: "En revisión", RESUELTO: "Resuelto" } as const;

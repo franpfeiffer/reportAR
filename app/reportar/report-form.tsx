@@ -167,7 +167,7 @@ export function ReportForm() {
     <form onSubmit={submitReport} className="grid gap-9">
       <section>
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Qué pasa?</h2>
-        <div className="mt-5"><label htmlFor="category" className="form-label">Tipo de problema</label><select id="category" name="category" className="field-control" defaultValue="" required><option value="" disabled>Elegí una categoría</option><option value="BACHE">Bache o vereda rota</option><option value="ALUMBRADO">Alumbrado público</option><option value="BASURA">Basura o limpieza</option><option value="ARBOLADO">Árboles y espacios verdes</option><option value="OTRO">Otro problema</option></select></div>
+        <div className="mt-5"><label htmlFor="category" className="form-label">Tipo de problema</label><select id="category" name="category" className="field-control" defaultValue="" required><option value="" disabled>Elegí una categoría</option><option value="BACHE">Bache o vereda rota</option><option value="INUNDACION">Inundación</option><option value="ALUMBRADO">Alumbrado público</option><option value="BASURA">Basura o limpieza</option><option value="ARBOLADO">Árboles y espacios verdes</option><option value="OTRO">Otro problema</option></select></div>
         <div className="mt-5"><label htmlFor="description" className="form-label">Describí la situación</label><Textarea id="description" name="description" placeholder="Por ejemplo: la luminaria de la esquina no funciona desde el martes" minLength={15} maxLength={2000} rows={5} required className="field-control min-h-36 resize-y" /><p className="form-help">Un detalle concreto ayuda a ubicar y entender el problema.</p></div>
       </section>
 

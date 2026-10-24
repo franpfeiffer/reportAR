@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "drizzle-kit push",
-    "build:workspace": "turbo run build"
+    "build:workspace": "turbo run build",
+    "test:bot": "node tests/bot-endpoint.cjs"
   },
   "dependencies": {
     "@neon/config": "^1.9.3",
