@@ -10,8 +10,10 @@ function readableAddress(value: unknown): string | null {
   const street = first("road", "pedestrian", "residential", "footway", "path");
   const number = first("house_number");
   const area = first("neighbourhood", "suburb", "city_district", "town", "city", "village", "municipality");
+  const city = first("city", "town", "village", "municipality");
+  const province = first("state");
   const streetLine = street ? `${street}${number ? ` ${number}` : ""}` : undefined;
-  const short = [streetLine, area].filter(Boolean).join(", ");
+  const short = [streetLine, area, city, province].filter((item, index, list) => Boolean(item) && list.indexOf(item) === index).join(", ");
   const fallback = typeof value.display_name === "string" ? value.display_name.split(",").slice(0, 3).join(",").trim() : "";
   const address = short || fallback;
   return address.length >= 5 ? address.slice(0, 200) : null;
@@ -27,7 +29,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "Las coordenadas no son válidas." }, { status: 400 });
   }
 
-  const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  const key = `v2:${lat.toFixed(5)},${lon.toFixed(5)}`;
   try {
     const [cached] = await db.select({ address: reverseGeocodeCache.address }).from(reverseGeocodeCache)
       .where(eq(reverseGeocodeCache.coordinateKey, key)).limit(1);

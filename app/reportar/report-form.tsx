@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ReportMap, type MapPoint } from "@/components/report-map";
 
 type CreatedReport = { publicId: string; photoUploadToken?: string };
+type GeographyOption = { id: string; name: string };
 const MAX_PHOTO_BYTES = 100 * 1024 * 1024;
 
 export function ReportForm() {
@@ -24,6 +25,15 @@ export function ReportForm() {
   const skipReverseGeocodeFor = useRef<string | null>(null);
   const lastForwardSearch = useRef("");
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [provinces, setProvinces] = useState<GeographyOption[]>([]);
+  const [provinceId, setProvinceId] = useState("");
+  const [provinceName, setProvinceName] = useState("");
+  const [localities, setLocalities] = useState<GeographyOption[]>([]);
+  const [cityId, setCityId] = useState("");
+  const [cityName, setCityName] = useState("");
+  const [isLoadingProvinces, setIsLoadingProvinces] = useState(true);
+  const [isLoadingLocalities, setIsLoadingLocalities] = useState(false);
+  const [geographyError, setGeographyError] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const previewUrl = useRef<string | null>(null);
@@ -35,6 +45,33 @@ export function ReportForm() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => () => { if (previewUrl.current) URL.revokeObjectURL(previewUrl.current); }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/geography/provinces", { signal: controller.signal })
+      .then(async response => {
+        const result = await response.json() as { provinces?: GeographyOption[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? "No pudimos cargar las provincias.");
+        setProvinces(result.provinces ?? []);
+      })
+      .catch(error => { if (!controller.signal.aborted) setGeographyError(error instanceof Error ? error.message : "No pudimos cargar las provincias."); })
+      .finally(() => { if (!controller.signal.aborted) setIsLoadingProvinces(false); });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!provinceId) return;
+    const controller = new AbortController();
+    fetch(`/api/geography/localities?province=${provinceId}`, { signal: controller.signal })
+      .then(async response => {
+        const result = await response.json() as { localities?: GeographyOption[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? "No pudimos cargar las ciudades.");
+        setLocalities(result.localities ?? []);
+      })
+      .catch(error => { if (!controller.signal.aborted) setGeographyError(error instanceof Error ? error.message : "No pudimos cargar las ciudades."); })
+      .finally(() => { if (!controller.signal.aborted) setIsLoadingLocalities(false); });
+    return () => controller.abort();
+  }, [provinceId]);
 
   function choosePhoto(file: File | null) {
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
@@ -69,7 +106,11 @@ export function ReportForm() {
   async function locateAddress() {
     const query = address.trim();
     if (query.length < 5) return;
-    if (query === lastForwardSearch.current && location) return;
+    if (location || query === lastForwardSearch.current) return;
+    if (!provinceName || !cityName) {
+      setAddressHint("Elegí primero una provincia y una ciudad o localidad.");
+      return;
+    }
     forwardSearch.current?.abort();
     const controller = new AbortController();
     forwardSearch.current = controller;
@@ -77,7 +118,8 @@ export function ReportForm() {
     setIsSearchingAddress(true);
     setAddressHint("Buscando esa dirección en el mapa…");
     try {
-      const url = `/api/geocode/search?q=${encodeURIComponent(query)}`;
+      const params = new URLSearchParams({ street: query, city: cityName, province: provinceName });
+      const url = `/api/geocode/search?${params.toString()}`;
       let response = await fetch(url, { signal: controller.signal });
       if (response.status === 429) {
         await new Promise(resolve => window.setTimeout(resolve, 1200));
@@ -101,6 +143,28 @@ export function ReportForm() {
         setIsSearchingAddress(false);
       }
     }
+  }
+
+  function selectProvince(value: string) {
+    const selected = provinces.find(item => item.id === value);
+    setProvinceId(value);
+    setProvinceName(selected?.name ?? "");
+    setLocalities([]);
+    setCityId("");
+    setCityName("");
+    setIsLoadingLocalities(Boolean(value));
+    setGeographyError("");
+    lastForwardSearch.current = "";
+    chooseLocation(null);
+  }
+
+  function selectCity(value: string) {
+    const selected = localities.find(item => item.id === value);
+    setCityId(value);
+    setCityName(selected?.name ?? "");
+    setGeographyError("");
+    lastForwardSearch.current = "";
+    chooseLocation(null);
   }
 
   useEffect(() => {
@@ -178,6 +242,11 @@ export function ReportForm() {
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
     const selectedLocation = locationValue.current;
+    const addressParts = String(formData.get("address") ?? "").split(",").map(part => part.trim()).filter(Boolean);
+    const normalizedAddressParts = addressParts.map(part => part.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR"));
+    for (const locality of [cityName, provinceName]) {
+      if (locality && !normalizedAddressParts.includes(locality.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-AR"))) addressParts.push(locality);
+    }
     if (photo && photo.size > MAX_PHOTO_BYTES) { setError("La foto no puede superar los 100 MB."); setIsSubmitting(false); return; }
     try {
       const response = await fetch("/api/reports", {
@@ -187,7 +256,7 @@ export function ReportForm() {
           latitude: selectedLocation?.latitude ?? null,
           longitude: selectedLocation?.longitude ?? null,
           category: formData.get("category"),
-          address: formData.get("address"),
+          address: addressParts.join(", "),
           description: formData.get("description"),
           expectsPhoto: Boolean(photo),
         }),
@@ -238,7 +307,7 @@ export function ReportForm() {
 
       <section className="border-t border-[#CBDCD4] pt-8">
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Dónde ocurre?</h2>
-        <div className="mt-5"><label htmlFor="address" className="form-label">Dirección o referencia</label><Input id="address" name="address" type="text" autoComplete="street-address" placeholder="Calle, altura, ciudad (ej. Córdoba 1900, Rosario)" minLength={5} maxLength={200} required className="field-control" value={address} onBlur={() => void locateAddress()} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void locateAddress(); } }} onChange={event => handleAddressChange(event.target.value)} /><p className="form-help">Para ubicar una dirección escrita, agregá la ciudad. Si preferís, podés usar tu ubicación actual.</p><div className="mt-2 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={() => void locateAddress()} disabled={isSearchingAddress || address.trim().length < 5} className="h-9 rounded-lg px-3 text-sm">{isSearchingAddress ? "Buscando…" : "Ubicar dirección en el mapa"}</Button>{addressHint && <p role="status" className="form-help !mt-0">{addressHint} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap</a></p>}</div></div>
+        <div className="mt-5"><label htmlFor="address" className="form-label">Calle y altura</label><Input id="address" name="address" type="text" autoComplete="street-address" placeholder="Ej. Córdoba 1900" minLength={3} maxLength={160} required className="field-control" value={address} onBlur={() => void locateAddress()} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void locateAddress(); } }} onChange={event => handleAddressChange(event.target.value)} /><div className="mt-5 grid gap-5 sm:grid-cols-2"><div><label htmlFor="province" className="form-label">Provincia</label><select id="province" name="province" className="field-control" value={provinceId} onChange={event => selectProvince(event.target.value)} required={!location} disabled={isLoadingProvinces}><option value="">{isLoadingProvinces ? "Cargando provincias…" : "Elegí una provincia"}</option>{provinces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div><label htmlFor="city" className="form-label">Ciudad o localidad</label><select id="city" name="city" className="field-control" value={cityId} onChange={event => selectCity(event.target.value)} required={!location} disabled={!provinceId || isLoadingLocalities}><option value="">{!provinceId ? "Primero elegí una provincia" : isLoadingLocalities ? "Cargando ciudades…" : "Elegí una ciudad o localidad"}</option>{localities.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></div><p className="form-help">Elegí provincia y ciudad para ubicar la dirección. También podés usar tu ubicación actual.</p>{geographyError && <p role="alert" className="form-help text-[#A43E30]">{geographyError}</p>}<div className="mt-2 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={() => void locateAddress()} disabled={isSearchingAddress || address.trim().length < 3 || !cityName || !provinceName} className="h-9 rounded-lg px-3 text-sm">{isSearchingAddress ? "Buscando…" : "Ubicar dirección en el mapa"}</Button>{addressHint && <p role="status" className="form-help !mt-0">{addressHint} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap</a></p>}</div></div>
         <div className="mt-6"><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><p className="form-label !mb-0">Marcá el punto en el mapa</p><span className="text-xs text-[#5B746F]">Opcional</span></div><ReportMap points={points} onSelect={chooseLocation} /><div className="mt-3 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={locate} className="h-10 rounded-lg px-4">Usar mi ubicación</Button>{location && <button type="button" className="civic-link text-sm" onClick={() => chooseLocation(null)}>Quitar punto</button>}</div><p className="form-help">{location ? `Punto elegido: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : "Tocá el mapa para señalar el lugar exacto."}</p>{locationError && <p role="alert" className="mt-2 text-sm text-[#A43E30]">{locationError}</p>}</div>
       </section>
 

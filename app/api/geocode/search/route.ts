@@ -9,16 +9,17 @@ function normalize(value: string) {
 }
 
 export async function GET(request: Request) {
-  const address = new URL(request.url).searchParams.get("q")?.trim().replace(/\s+/g, " ") ?? "";
-  if (address.length < 5 || address.length > 200) {
-    return Response.json({ error: "Escribí una dirección de al menos 5 caracteres." }, { status: 400 });
+  const params = new URL(request.url).searchParams;
+  const address = params.get("street")?.trim().replace(/\s+/g, " ") ?? "";
+  const city = params.get("city")?.trim() ?? "";
+  const province = params.get("province")?.trim() ?? "";
+  if (address.length < 3 || address.length > 160) {
+    return Response.json({ error: "Escribí una calle y altura válidas." }, { status: 400 });
   }
-  const parts = address.split(",").map(part => part.trim()).filter(Boolean);
-  if (parts.length < 2) {
-    return Response.json({ error: "Agregá también la ciudad después de una coma. Ejemplo: Córdoba 1900, Rosario." }, { status: 400 });
+  if (!city || !province || city.length > 100 || province.length > 100) {
+    return Response.json({ error: "Elegí primero una provincia y una ciudad o localidad." }, { status: 400 });
   }
-  const city = parts[1];
-  const normalized = normalize(address);
+  const normalized = normalize(`${address}|${city}|${province}`);
   const queryKey = createHash("sha256").update(normalized).digest("hex");
   try {
     const [cached] = await db.select({ latitude: forwardGeocodeCache.latitude, longitude: forwardGeocodeCache.longitude })
@@ -38,9 +39,9 @@ export async function GET(request: Request) {
 
     const upstream = new URL("https://nominatim.openstreetmap.org/search");
     upstream.search = new URLSearchParams({
-      q: `${address}, Argentina`,
+      q: `${address}, ${city}, ${province}, Argentina`,
       format: "jsonv2",
-      limit: "10",
+      limit: "20",
       addressdetails: "1",
       countrycodes: "ar",
       layer: "address",
@@ -56,18 +57,21 @@ export async function GET(request: Request) {
     const candidates = Array.isArray(results) ? results.filter(isRecord) : [];
     const inRequestedCity = candidates.filter(candidate => {
       if (!isRecord(candidate.address)) return false;
-      const localities = [candidate.address.city, candidate.address.town, candidate.address.village, candidate.address.municipality]
+      const localities = [candidate.address.city, candidate.address.town, candidate.address.village, candidate.address.municipality, candidate.address.suburb]
         .filter((value): value is string => typeof value === "string");
-      return localities.some(locality => normalize(locality) === normalize(city)
-        || normalize(locality).includes(normalize(city))
-        || normalize(city).includes(normalize(locality)));
+      const localityMatches = localities.some(locality => normalize(locality) === normalize(city)
+        || (normalize(city).length >= 6 && normalize(locality).includes(normalize(city)))
+        || (normalize(locality).length >= 6 && normalize(city).includes(normalize(locality))));
+      if (!localityMatches) return false;
+      const state = typeof candidate.address.state === "string" ? normalize(candidate.address.state) : "";
+      return !state || state === normalize(province) || state.includes(normalize(province)) || normalize(province).includes(state);
     });
-    const numbers = [...parts[0].matchAll(/\b\d+[a-zA-Z]?\b/g)];
+    const numbers = [...address.matchAll(/\b\d+[a-zA-Z]?\b/g)];
     const requestedNumber = numbers.at(-1)?.[0];
     const match = inRequestedCity.find(candidate => isRecord(candidate.address) &&
       typeof candidate.address.house_number === "string" && candidate.address.house_number.toLocaleLowerCase() === requestedNumber?.toLocaleLowerCase())
       ?? inRequestedCity[0];
-    if (!match) return Response.json({ error: `No encontramos esa dirección en ${city}. Revisá la ciudad y la altura, o marcá el punto en el mapa.` }, { status: 404 });
+    if (!match) return Response.json({ error: `No encontramos esa dirección en ${city}, ${province}. Revisá la altura o marcá el punto en el mapa.` }, { status: 404 });
     const latitude = Number(match.lat);
     const longitude = Number(match.lon);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
