@@ -17,6 +17,7 @@ export default function Home() {
               <a href={telegramBotUrl} target="_blank" rel="noreferrer" className="civic-button civic-button-coral">Reportar por Telegram <span aria-hidden="true">↗</span></a>
               <Link href="/reportar" className="civic-button civic-button-outline">Usar el formulario web</Link>
             </div>
+            <Link href="/reclamos" className="civic-link mt-5 inline-flex text-sm">Ver los reclamos de la comunidad →</Link>
             <p className="mt-5 text-sm text-[#5B746F]">No necesitás una cuenta para reportar.</p>
           </div>
           <RouteArt />
