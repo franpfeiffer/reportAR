@@ -13,8 +13,8 @@ export async function GET(request: Request) {
   const address = params.get("street")?.trim().replace(/\s+/g, " ") ?? "";
   const city = params.get("city")?.trim() ?? "";
   const province = params.get("province")?.trim() ?? "";
-  if (address.length < 3 || address.length > 160) {
-    return Response.json({ error: "Escribí una calle y altura válidas." }, { status: 400 });
+  if (!address) {
+    return Response.json({ error: "Escribí una calle o referencia." }, { status: 400 });
   }
   if (!city || !province || city.length > 100 || province.length > 100) {
     return Response.json({ error: "Elegí primero una provincia y una ciudad o localidad." }, { status: 400 });

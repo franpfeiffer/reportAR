@@ -5,10 +5,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { isRecord } from "@/lib/reports/validation";
 
 export async function POST(request: Request) {
-  if (Number(request.headers.get("content-length")) > 16_384) return Response.json({error: "El formulario es demasiado grande."}, {status: 413});
   try {
     const raw = await request.text();
-    if (raw.length > 16_384) return Response.json({error: "El formulario es demasiado grande."}, {status: 413});
     const body: unknown = JSON.parse(raw);
     const input = parseReport(body);
     const expectsPhoto = isRecord(body) && body.expectsPhoto === true;

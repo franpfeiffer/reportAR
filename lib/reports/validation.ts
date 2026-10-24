@@ -16,8 +16,8 @@ export function parseReport(value: unknown) {
   const address = typeof value.address === "string" ? value.address.trim() : "";
   const description = typeof value.description === "string" ? value.description.trim() : "";
   if (typeof category !== "string" || !Object.hasOwn(categoryLabels, category)) throw new ValidationError("Elegí una categoría válida.");
-  if (address.length < 5 || address.length > 200) throw new ValidationError("Indicá una ubicación de entre 5 y 200 caracteres.");
-  if (description.length < 15 || description.length > 2000) throw new ValidationError("La descripción debe tener entre 15 y 2000 caracteres.");
+  if (!address) throw new ValidationError("Indicá una ubicación o referencia.");
+  if (!description) throw new ValidationError("Describí la situación.");
   const latitude = value.latitude ?? null;
   const longitude = value.longitude ?? null;
   if (latitude !== null || longitude !== null) {
