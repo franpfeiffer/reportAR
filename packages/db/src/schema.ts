@@ -27,10 +27,22 @@ export const reportStatus = pgEnum("report_status", [
   "RESUELTO",
 ]);
 
+export const reportClassificationStatus = pgEnum("report_classification_status", [
+  "AUTO_ASSIGNED",
+  "NEEDS_REVIEW",
+  "UNAVAILABLE",
+  "REVIEWED",
+]);
+
 export const citizenReports = pgTable("citizen_reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   publicId: uuid("public_id").notNull().defaultRandom().unique(),
   category: reportCategory("category").notNull(),
+  declaredCategory: reportCategory("declared_category"),
+  suggestedCategory: reportCategory("suggested_category"),
+  classificationProbability: doublePrecision("classification_probability"),
+  classificationStatus: reportClassificationStatus("classification_status"),
+  classificationModel: text("classification_model"),
   address: text("address").notNull(),
   description: text("description").notNull(),
   latitude: doublePrecision("latitude"),
@@ -70,3 +82,4 @@ export const forwardGeocodeCache = pgTable("forward_geocode_cache", {
 
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type CitizenReport = typeof citizenReports.$inferSelect;
+export type ClassificationStatus = typeof reportClassificationStatus.enumValues[number];

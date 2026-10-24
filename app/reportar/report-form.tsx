@@ -323,7 +323,7 @@ export function ReportForm() {
       <div className="border-t border-[#CBDCD4] pt-7">
         {error && <p role="alert" className="mb-5 rounded-lg bg-[#FFEAE4] px-4 py-3 text-sm text-[#9D382B]">{error}</p>}
         <Button type="submit" disabled={isSubmitting || isSearchingAddress} className="h-12 w-full rounded-lg px-6 font-bold sm:w-auto">{isSubmitting ? "Enviando reporte…" : isSearchingAddress ? "Buscando dirección…" : "Enviar reporte"}</Button>
-        <p className="form-help mt-3">El reporte es público. No hace falta una cuenta.</p>
+        <p className="form-help mt-3">El reporte es público. No hace falta una cuenta. Usamos TypeSafe/JEV para clasificar la descripción junto con la categoría que elegiste; la dirección y la foto no se envían al clasificador.</p>
       </div>
     </form>
   );

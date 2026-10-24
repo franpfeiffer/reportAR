@@ -3,6 +3,7 @@ import { citizenReports } from "@reportar/db/schema";
 import { parseReport, ValidationError } from "@/lib/reports/validation";
 import { createHash, randomBytes } from "node:crypto";
 import { isRecord } from "@/lib/reports/validation";
+import { classifyReport } from "@/lib/reports/classification";
 
 export async function POST(request: Request) {
   try {
@@ -11,8 +12,10 @@ export async function POST(request: Request) {
     const input = parseReport(body);
     const expectsPhoto = isRecord(body) && body.expectsPhoto === true;
     const photoUploadToken = expectsPhoto ? randomBytes(32).toString("hex") : null;
+    const classification = await classifyReport(input.description, input.category);
     const [report] = await db.insert(citizenReports).values({
       ...input,
+      ...classification,
       photoUploadTokenHash: photoUploadToken ? createHash("sha256").update(photoUploadToken).digest("hex") : null,
     }).returning({publicId: citizenReports.publicId});
     return Response.json({ ...report, ...(photoUploadToken ? { photoUploadToken } : {}) }, {status: 201});

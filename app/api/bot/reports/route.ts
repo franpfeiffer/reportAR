@@ -4,6 +4,7 @@ import { citizenReports } from "@reportar/db/schema";
 import { eq } from "drizzle-orm";
 import { parseBotReport } from "@/lib/reports/bot-validation";
 import { ValidationError } from "@/lib/reports/validation";
+import { classifyReport, unavailableClassification } from "@/lib/reports/classification";
 
 const MAX_BYTES = 20_000;
 export async function POST(request: Request) {
@@ -33,10 +34,22 @@ export async function POST(request: Request) {
       } finally { reader.releaseLock(); }
     }
     const input = parseBotReport(JSON.parse(Buffer.concat(chunks).toString("utf8")), request.headers.get("idempotency-key"));
-    const [created] = await db.insert(citizenReports).values(input).onConflictDoNothing({target: citizenReports.externalId}).returning({id: citizenReports.publicId});
-    const report = created ?? (await db.select({id: citizenReports.publicId}).from(citizenReports).where(eq(citizenReports.externalId, input.externalId)).limit(1))[0];
-    if (!report) throw new Error("Report not found after conflict");
-    return Response.json({id: report.id, status: "received"}, {status: created ? 201 : 200});
+    const [existing] = await db.select({id: citizenReports.publicId}).from(citizenReports).where(eq(citizenReports.externalId, input.externalId)).limit(1);
+    if (existing) return Response.json({id: existing.id, status: "received"}, {status: 200});
+
+    const [created] = await db.insert(citizenReports).values({
+      ...input,
+      ...unavailableClassification(input.category),
+    }).onConflictDoNothing({target: citizenReports.externalId}).returning({id: citizenReports.publicId});
+    if (!created) {
+      const [duplicate] = await db.select({id: citizenReports.publicId}).from(citizenReports).where(eq(citizenReports.externalId, input.externalId)).limit(1);
+      if (!duplicate) throw new Error("Report not found after conflict");
+      return Response.json({id: duplicate.id, status: "received"}, {status: 200});
+    }
+
+    const classification = await classifyReport(input.description, input.category);
+    await db.update(citizenReports).set(classification).where(eq(citizenReports.externalId, input.externalId));
+    return Response.json({id: created.id, status: "received"}, {status: 201});
   } catch (error) {
     if (error instanceof SyntaxError) return Response.json({error: "invalid_json"}, {status: 400});
     if (error instanceof ValidationError) return Response.json({error: error.message}, {status: 422});

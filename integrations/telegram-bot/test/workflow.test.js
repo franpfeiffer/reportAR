@@ -37,6 +37,16 @@ test('foto con descripción y categoría acentuada', () => {
   assert.equal(result.report.category, 'inundacion');
   assert.equal(result.report.photo.telegram_file_id, 'large');
 });
+test('acepta arbolado y explica qué datos recibe TypeSafe/JEV', () => {
+  for (const category of ['arbolado', 'arbolados']) {
+    const result = parseUpdate({ message: { ...message, text: `${category} | Hay ramas caídas sobre la vereda | San Martín 123` } });
+    assert.equal(result.report.category, 'arbolado');
+  }
+  const help = runCode('Validar reporte', { message: { ...message, text: '/start' } });
+  assert.match(help.reply, /TypeSafe\/JEV/);
+  assert.match(help.reply, /solo la descripción y la categoría declarada/);
+  assert.match(help.reply, /no se envían dirección, foto ni identificadores/);
+});
 test('plantilla y saludos ofrecen un ejemplo válido sin crear reportes', () => {
   for (const text of ['/start', '/plantilla', '/reportar', '/plantilla@MiBot', 'hola']) {
     const result = runCode('Validar reporte', { message: { ...message, text } });

@@ -13,7 +13,7 @@
     "lint": "eslint",
     "db:push": "drizzle-kit push",
     "build:workspace": "turbo run build",
-    "test:bot": "node tests/bot-endpoint.cjs"
+    "test:bot": "node tests/bot-endpoint.cjs && node tests/classification.cjs"
   },
   "dependencies": {
     "@neon/config": "^1.9.3",
@@ -24,6 +24,7 @@
     "@radix-ui/react-slot": "^1.5.0",
     "@reportar/auth": "workspace:*",
     "@reportar/db": "workspace:*",
+    "@typesafe-ai/sdk": "^0.7.0",
     "@vercel/blob": "^2.8.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

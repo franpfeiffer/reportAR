@@ -1,6 +1,6 @@
 import { isRecord, ValidationError } from "./validation";
 
-const categories = { bache: "BACHE", inundacion: "INUNDACION", alumbrado: "ALUMBRADO", basura: "BASURA", otro: "OTRO" } as const;
+const categories = { bache: "BACHE", inundacion: "INUNDACION", alumbrado: "ALUMBRADO", basura: "BASURA", arbolado: "ARBOLADO", otro: "OTRO" } as const;
 export function parseBotReport(value: unknown, key: string | null) {
   if (!isRecord(value) || value.source !== "telegram") throw new ValidationError("invalid_report");
   const { external_id, category, description, address, reporter, photo, reported_at } = value;

@@ -43,7 +43,7 @@ Los campos incompletos no generan un reporte. También sigue aceptando el format
 bache | Pozo grande en la esquina | San Martín 123
 ```
 
-Categorías: `bache`, `inundacion`, `alumbrado`, `basura`, `otro`. También se admite una foto individual con ese texto como descripción. La dirección es texto libre: no hay validación geográfica. Los álbumes, audio, GPS y seguimiento de estados quedan fuera de este MVP.
+Categorías: `bache`, `inundacion`, `alumbrado`, `basura`, `arbolado`, `otro`. También se admite una foto individual con ese texto como descripción. La dirección es texto libre: no hay validación geográfica. Los álbumes, audio, GPS y seguimiento de estados quedan fuera de este MVP.
 
 El bot responde con un número MOCK y aclara que no guardó el reclamo ni lo envió al municipio. El nodo mock no conserva reportes; n8n sí puede guardar el contenido en el historial de ejecuciones. Usar datos ficticios.
 
@@ -80,3 +80,5 @@ El workflow listo para conectar es `n8n/reportes-municipales.json` (generado por
 El nodo HTTP realiza hasta tres intentos con la misma clave de idempotencia. Solo una respuesta válida confirma éxito. Los errores de guardado se comunican por una rama separada; si se perdió la respuesta después de guardar, no se afirma que el reporte haya fallado. La ayuda y los mensajes incompletos no se persisten. Las fotos conservan su telegram_file_id; todavía no se descargan ni se almacenan en el bucket.
 
 El bot usa POST `/api/bot/reports`, Authorization Bearer y el header Idempotency-Key igual a `report.external_id`. El endpoint local `src/mock-api.js` sigue siendo una herramienta de desarrollo y no es el endpoint publicado. No activar el workflow generado sin completar la configuración.
+
+La app clasifica los reportes web y de Telegram con TypeSafe/JEV en el servidor. El clasificador recibe la descripción y la categoría declarada, sin dirección, fotos ni identificadores. Si la probabilidad de la categoría principal es menor que 0.70 o el servicio no responde, el reporte se conserva y queda para revisión municipal.

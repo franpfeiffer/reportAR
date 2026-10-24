@@ -6,12 +6,12 @@ function parseUpdate(update) {
   const help = [
     '👋 ¡Hola! Soy el asistente de reportes de tu barrio.',
     '📋 En el siguiente mensaje te dejo una plantilla. Copiala, reemplazá lo que está entre corchetes y enviámela completa en un solo mensaje.',
-    '🏷 Categoría: elegí bache, inundacion, alumbrado, basura u otro.',
+    '🏷 Categoría: elegí bache, inundacion, alumbrado, basura, arbolado u otro.',
     '✍️ Descripción: contá qué pasa y alguna referencia útil. Ejemplo: “Hay un pozo grande que ocupa media calle”.',
     '📍 Dirección: indicá calle, altura o esquina y localidad para ubicar el problema.',
     '📷 Podés adjuntar UNA foto y pegar la plantilla completa en su descripción. Con foto, usá hasta 1024 caracteres en total.',
     'Podés pedirme otra plantilla con /reportar o /plantilla.',
-    'Los reclamos válidos se guardan en ReportAR. La foto todavía no se almacena. No se confirma envío al municipio. Los mensajes pueden quedar en el historial de n8n. Este canal no atiende emergencias.'
+    'Los reclamos válidos se guardan en ReportAR. Para clasificarlos se envían a TypeSafe/JEV solo la descripción y la categoría declarada; no se envían dirección, foto ni identificadores. La foto todavía no se almacena. No se confirma envío al municipio. Los mensajes pueden quedar en el historial de n8n. Este canal no atiende emergencias.'
   ].join('\n\n');
   const text = (m.text || m.caption || '').trim();
   const base = { chat_id: String(m.chat.id) };
@@ -35,12 +35,12 @@ function parseUpdate(update) {
   const parts = Object.keys(fields).length
     ? ['categoria', 'descripcion', 'direccion'].map(key => unbox(fields[key] || ''))
     : text.split('|').map(unbox);
-  const aliases = { baches: 'bache', inundaciones: 'inundacion', otros: 'otro' };
+  const aliases = { baches: 'bache', inundaciones: 'inundacion', arbolados: 'arbolado', otros: 'otro' };
   const rawCategory = normalize(parts[0] || '');
   const category = aliases[rawCategory] || rawCategory;
   const errors = [];
   if (duplicate) errors.push('Hay campos repetidos: dejá una sola categoría, descripción y dirección.');
-  if (parts.length !== 3 || !['bache', 'inundacion', 'alumbrado', 'basura', 'otro'].includes(category)) errors.push('Categoría: elegí bache, inundacion, alumbrado, basura u otro.');
+  if (parts.length !== 3 || !['bache', 'inundacion', 'alumbrado', 'basura', 'arbolado', 'otro'].includes(category)) errors.push('Categoría: elegí bache, inundacion, alumbrado, basura, arbolado u otro.');
   if (!parts[1] || parts[1].length < 10 || parts[1].length > 2000 || parts[1] === 'contá qué está pasando') errors.push('Descripción: escribí entre 10 y 2000 caracteres contando qué pasa.');
   if (!parts[2] || parts[2].length < 5 || parts[2].length > 300 || ['calle, altura o esquina y localidad', 'dirección'].includes(parts[2])) errors.push('Dirección: escribí entre 5 y 300 caracteres con calle, altura o esquina y localidad.');
   if (errors.length) return guide('📝 Falta ajustar estos datos:\n\n' + errors.map(error => '• ' + error).join('\n') + '\n\nCompletá la plantilla del siguiente mensaje y enviámela entera.');
