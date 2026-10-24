@@ -84,6 +84,7 @@ export function ReportForm() {
   function chooseLocation(point: MapPoint | null, fromAddressSearch = false) {
     forwardSearch.current?.abort();
     forwardSearch.current = null;
+    setIsSearchingAddress(false);
     locationValue.current = point;
     skipReverseGeocodeFor.current = fromAddressSearch && point ? `${point.latitude},${point.longitude}` : null;
     setLocation(point);
