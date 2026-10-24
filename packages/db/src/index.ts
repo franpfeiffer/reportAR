@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { citizenReports, userProfiles } from "./schema";
+import { citizenReports, reverseGeocodeCache, reverseGeocodeGate, userProfiles } from "./schema";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -10,7 +10,7 @@ if (!connectionString) {
 
 export const sqlClient = neon(connectionString);
 
-export const db = drizzle(sqlClient, { schema: { citizenReports, userProfiles } });
+export const db = drizzle(sqlClient, { schema: { citizenReports, reverseGeocodeCache, reverseGeocodeGate, userProfiles } });
 
 export function getSql() {
   return sqlClient;

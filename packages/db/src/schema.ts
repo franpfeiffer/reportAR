@@ -1,4 +1,4 @@
-import { doublePrecision, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { doublePrecision, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const userRole = pgEnum("user_role", ["CITIZEN", "MUNICIPAL_ADMIN"]);
 
@@ -35,10 +35,24 @@ export const citizenReports = pgTable("citizen_reports", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   photoUrl: text("photo_url"),
+  photoContentType: text("photo_content_type"),
+  photoFilename: text("photo_filename"),
+  photoUploadTokenHash: text("photo_upload_token_hash"),
   source: text("source").notNull().default("WEB"),
   status: reportStatus("status").notNull().default("RECIBIDO"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const reverseGeocodeCache = pgTable("reverse_geocode_cache", {
+  coordinateKey: text("coordinate_key").primaryKey(),
+  address: text("address").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const reverseGeocodeGate = pgTable("reverse_geocode_gate", {
+  id: integer("id").primaryKey(),
+  lastRequestAt: timestamp("last_request_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type UserProfile = typeof userProfiles.$inferSelect;
