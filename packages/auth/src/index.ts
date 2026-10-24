@@ -24,11 +24,13 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
     authUserId: user.id,
     email: user.email ?? "",
     name: user.name ?? "",
+    role: "MUNICIPAL_ADMIN",
   }).onConflictDoUpdate({
     target: userProfiles.authUserId,
     set: {
       email: user.email ?? "",
       name: user.name ?? "",
+      role: "MUNICIPAL_ADMIN",
       updatedAt: new Date(),
     },
   });
