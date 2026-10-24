@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithProvider, type OAuthProvider } from "@reportar/auth/client";
+import { signInWithProvider } from "@reportar/auth/client";
 
 export function OAuthLoginButtons() {
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export function OAuthLoginButtons() {
     } catch {
       setError("No pudimos iniciar sesión. Intentá nuevamente.");
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   }
 
