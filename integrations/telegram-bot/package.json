@@ -1,0 +1,11 @@
+{
+  "name": "reportes-municipales-telegram",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node src/mock-api.js",
+    "build:workflow": "node scripts/build-workflow.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=22" }
+}

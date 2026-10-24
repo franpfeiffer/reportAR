@@ -1,0 +1,373 @@
+{
+  "name": "ReportAR · Telegram · Persistencia",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "webhookId": "municipal-reportes-mvp"
+    },
+    {
+      "id": "parse",
+      "name": "Validar reporte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function parseUpdate(update) {\n  const m = update.message;\n  if (!m || m.chat?.type !== 'private' || m.from?.is_bot) return { action: 'ignore' };\n  const template = 'Categoría: [tipo de problema]\\nDescripción: [contá qué está pasando]\\nDirección: [calle, altura o esquina y localidad]';\n  const help = [\n    '👋 ¡Hola! Soy el asistente de reportes de tu barrio.',\n    '📋 En el siguiente mensaje te dejo una plantilla. Copiala, reemplazá lo que está entre corchetes y enviámela completa en un solo mensaje.',\n    '🏷 Categoría: elegí bache, inundacion, alumbrado, basura u otro.',\n    '✍️ Descripción: contá qué pasa y alguna referencia útil. Ejemplo: “Hay un pozo grande que ocupa media calle”.',\n    '📍 Dirección: indicá calle, altura o esquina y localidad para ubicar el problema.',\n    '📷 Podés adjuntar UNA foto y pegar la plantilla completa en su descripción. Con foto, usá hasta 1024 caracteres en total.',\n    'Podés pedirme otra plantilla con /reportar o /plantilla.',\n    'Los reclamos válidos se guardan en ReportAR. La foto todavía no se almacena. No se confirma envío al municipio. Los mensajes pueden quedar en el historial de n8n. Este canal no atiende emergencias.'\n  ].join('\\n\\n');\n  const text = (m.text || m.caption || '').trim();\n  const base = { chat_id: String(m.chat.id) };\n  const guide = reply => ({ ...base, action: 'reply', reply, template });\n  if (/^\\/(start|help|ayuda|reportar|plantilla)(?:@\\w+)?(?:\\s|$)/i.test(text) || /^(hola|buenas|buen dia|buen día)[!.\\s]*$/i.test(text)) return guide(help);\n  // Leer campos línea por línea permite espacios, líneas vacías, emojis y otro orden.\n  const normalize = value => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();\n  const fields = {};\n  let current;\n  let duplicate = false;\n  for (const line of text.replace(/\\r\\n?/g, '\\n').split('\\n')) {\n    const clean = line.trim().replace(/^[^\\p{L}\\p{N}]+/u, '');\n    const header = clean.match(/^(categor[ií]a|descripci[oó]n|direcci[oó]n)\\s*[:：]\\s*(.*)$/i);\n    if (header) {\n      current = normalize(header[1]);\n      if (Object.hasOwn(fields, current)) duplicate = true;\n      fields[current] = header[2];\n    } else if (current && line.trim()) fields[current] += '\\n' + line.trim();\n  }\n  const unbox = value => value.trim().replace(/^\\[([\\s\\S]*)\\]$/, '$1').trim();\n  const parts = Object.keys(fields).length\n    ? ['categoria', 'descripcion', 'direccion'].map(key => unbox(fields[key] || ''))\n    : text.split('|').map(unbox);\n  const aliases = { baches: 'bache', inundaciones: 'inundacion', otros: 'otro' };\n  const rawCategory = normalize(parts[0] || '');\n  const category = aliases[rawCategory] || rawCategory;\n  const errors = [];\n  if (duplicate) errors.push('Hay campos repetidos: dejá una sola categoría, descripción y dirección.');\n  if (parts.length !== 3 || !['bache', 'inundacion', 'alumbrado', 'basura', 'otro'].includes(category)) errors.push('Categoría: elegí bache, inundacion, alumbrado, basura u otro.');\n  if (!parts[1] || parts[1].length < 10 || parts[1].length > 2000 || parts[1] === 'contá qué está pasando') errors.push('Descripción: escribí entre 10 y 2000 caracteres contando qué pasa.');\n  if (!parts[2] || parts[2].length < 5 || parts[2].length > 300 || ['calle, altura o esquina y localidad', 'dirección'].includes(parts[2])) errors.push('Dirección: escribí entre 5 y 300 caracteres con calle, altura o esquina y localidad.');\n  if (errors.length) return guide('📝 Falta ajustar estos datos:\\n\\n' + errors.map(error => '• ' + error).join('\\n') + '\\n\\nCompletá la plantilla del siguiente mensaje y enviámela entera.');\n  return { ...base, action: 'create', report: {\n    source: 'telegram', external_id: `telegram:${m.chat.id}:${m.message_id}`,\n    category, description: parts[1], address: parts[2],\n    reporter: { telegram_user_id: String(m.from.id), telegram_chat_id: String(m.chat.id) },\n    photo: m.photo?.length ? { telegram_file_id: m.photo[m.photo.length - 1].file_id } : null,\n    reported_at: new Date(m.date * 1000).toISOString()\n  } };\n}\nreturn $input.all().map(item => ({ json: parseUpdate(item.json) }));"
+      }
+    },
+    {
+      "id": "ignore",
+      "name": "Procesar mensaje",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action !== \"ignore\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "route",
+      "name": "Es reporte valido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "condition",
+              "leftValue": "={{ $json.action === \"create\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "persist",
+      "name": "Guardar reporte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        -180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.REPORTAR_API_URL + \"/api/bot/reports\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.report.external_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.report }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "confirm",
+      "name": "Preparar confirmacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -180
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, i) => { const original = $(\"Validar reporte\").itemMatching(i).json; if (!/^[0-9a-f-]{36}$/i.test(item.json.id || \"\") || item.json.status !== \"received\") throw new Error(\"Respuesta inválida de persistencia\"); return { json: { chat_id: original.chat_id, reply: \"Reporte guardado en ReportAR.\\nNúmero: \" + item.json.id + \"\\nCategoría: \" + original.report.category + \"\\nDirección: \" + original.report.address + \"\\n\\nLa foto, si adjuntaste una, todavía no se almacena. Esto no confirma envío al municipio.\" } }; });"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "error",
+      "name": "Informar error de guardado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -20
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, i) => ({ json: { chat_id: $(\"Validar reporte\").itemMatching(i).json.chat_id, reply: \"No pudimos confirmar el guardado. Reintentá reenviando el mensaje original. No se confirmó el envío al municipio.\" } }));"
+      }
+    },
+    {
+      "id": "reply",
+      "name": "Responder por Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1460,
+        -180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\") }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      }
+    },
+    {
+      "id": "instructions",
+      "name": "Explicar como reportar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\") }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      }
+    },
+    {
+      "id": "template",
+      "name": "Enviar plantilla para copiar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1200,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $(\"Validar reporte\").first().json.chat_id }}",
+        "text": "={{ \"<pre>\" + $(\"Validar reporte\").first().json.template.replace(/&/g, \"&amp;\").replace(/</g, \"&lt;\").replace(/>/g, \"&gt;\") + \"</pre>\" }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      }
+    },
+    {
+      "id": "note",
+      "name": "Como usar este MVP",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -400
+      ],
+      "parameters": {
+        "width": 710,
+        "height": 280,
+        "content": "## Configuración\n1. Crear un bot con @BotFather.\n2. Elegir la misma credencial en Telegram Trigger, Responder por Telegram, Explicar como reportar y Enviar plantilla para copiar.\n3. Probar /start por chat privado.\n4. El bot envía instrucciones y después una plantilla en un mensaje separado. Completar Categoría, Descripción y Dirección.\nTambién admite una foto con ese texto como descripción.\n\n**Persistencia:** configurar REPORTAR_API_URL en Variables y una credencial Header Auth (Authorization: Bearer TOKEN) en Guardar reporte. No activar sin URL HTTPS real. Se guardan reclamos en ReportAR; no se confirma envío al municipio. n8n puede conservar datos en el historial de ejecuciones. Usar datos ficticios.\n\nEl trigger necesita una URL pública HTTPS. Un bot admite un webhook activo: evitar usar el mismo bot en dos workflows."
+      }
+    },
+    {
+      "id": "api-note",
+      "name": "Configuración API",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        900,
+        -540
+      ],
+      "parameters": {
+        "width": 600,
+        "height": 300,
+        "content": "## Endpoint autenticado\nEl nodo HTTP Request usa: POST https://TU-APP/api/bot/reports\nAutenticación: credencial Header Auth con Authorization: Bearer ...\nBody JSON: {{ $json.report }}\nHeader Idempotency-Key: {{ $json.report.external_id }}\n\nLa API debe guardar con external_id único y responder { id, status: \"received\" }. Preparar confirmacion debe tomar chat_id/report desde Validar reporte y el id desde la respuesta HTTP. Agregar rama de error: nunca confirmar éxito si falla el guardado.\n\nLa foto se representa por telegram_file_id, no por una URL pública. Para almacenarla, descargarla mediante Telegram y subirla al almacenamiento de la app."
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validar reporte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar reporte": {
+      "main": [
+        [
+          {
+            "node": "Procesar mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar mensaje": {
+      "main": [
+        [
+          {
+            "node": "Es reporte valido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Es reporte valido": {
+      "main": [
+        [
+          {
+            "node": "Guardar reporte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Explicar como reportar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explicar como reportar": {
+      "main": [
+        [
+          {
+            "node": "Enviar plantilla para copiar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar reporte": {
+      "main": [
+        [
+          {
+            "node": "Preparar confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Informar error de guardado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Informar error de guardado": {
+      "main": [
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Responder por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Informar error de guardado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

@@ -39,7 +39,7 @@ Se verificó carga/lectura autenticada de un archivo temporal y se retiró. No s
 
 ## Conectar n8n después del despliegue
 
-Importar `n8n/reportes-municipales.json` del repositorio Bot-reportar. Configurar URL HTTPS de Vercel y credencial Header Auth antes de publicar. El workflow queda inactivo en el archivo para evitar registrar un webhook sin configuración. No mantener dos workflows activos para el mismo bot. Ver instrucciones del repositorio del bot.
+Importar `integrations/telegram-bot/n8n/reportes-municipales.json` de este repositorio. Configurar URL HTTPS de Vercel y credencial Header Auth antes de publicar. El workflow queda inactivo en el archivo para evitar registrar un webhook sin configuración. No mantener dos workflows activos para el mismo bot. Ver instrucciones en `integrations/telegram-bot/README.md`.
 
 ## Validación
 
@@ -117,3 +117,7 @@ Una URL incorrecta, proxy o protección de despliegue puede devolver otros códi
 5. Enviar foto con caption válido: comprobar guardado del reclamo y telegram_file_id; no esperar imagen en la vista pública.
 6. Probar credencial incorrecta y fallo de API: comprobar ausencia de confirmación de éxito.
 7. Publicar el workflow solo después de completar estas configuraciones. Los accesos al bucket no son necesarios en n8n para esta versión.
+
+## Código del bot en este repositorio
+
+El bot y el workflow están en `integrations/telegram-bot/`. Ejecutar `npm --prefix integrations/telegram-bot test` para las pruebas y `npm --prefix integrations/telegram-bot run build:workflow` para regenerar el JSON. El paquete se mantiene fuera del workspace `packages/*` de la app. El endpoint mock sigue siendo solo local; no desplegarlo en Vercel.
