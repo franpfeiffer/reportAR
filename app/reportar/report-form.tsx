@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { ReportMap, type MapPoint } from "@/components/report-map";
 
 type CreatedReport = { publicId: string };
 
@@ -8,6 +13,14 @@ const inputClassName = "mt-2 min-h-12 w-full rounded-xl border border-zinc-700 b
 const labelClassName = "block text-sm font-medium text-zinc-200";
 
 export function ReportForm() {
+  const [location, setLocation] = useState<MapPoint | null>(null);
+  const points = useMemo(() => location ? [location] : [], [location]);
+  const [locationError, setLocationError] = useState("");
+  function locate() {
+    setLocationError("");
+    if (!navigator.geolocation) {setLocationError("Tu navegador no permite obtener la ubicación."); return;}
+    navigator.geolocation.getCurrentPosition(position => setLocation({latitude:position.coords.latitude,longitude:position.coords.longitude}), () => setLocationError("No pudimos obtener tu ubicación. Podés marcarla en el mapa."), {timeout:10000});
+  }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [createdReport, setCreatedReport] = useState<CreatedReport | null>(null);
@@ -23,6 +36,8 @@ export function ReportForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          latitude: location?.latitude ?? null,
+          longitude: location?.longitude ?? null,
           category: formData.get("category"),
           address: formData.get("address"),
           description: formData.get("description"),
@@ -73,7 +88,7 @@ export function ReportForm() {
 
       <div>
         <label htmlFor="address" className={labelClassName}>¿Dónde ocurre?</label>
-        <input
+        <Input
           id="address"
           name="address"
           type="text"
@@ -86,9 +101,16 @@ export function ReportForm() {
         />
       </div>
 
+      <div className="grid gap-3">
+        <p className={labelClassName}>Ubicación en el mapa <span className="text-zinc-500">(opcional)</span></p>
+        <ReportMap points={points} onSelect={setLocation} />
+        <div className="flex flex-wrap items-center gap-3"><Button type="button" onClick={locate}>Usar mi ubicación</Button>{location && <Button type="button" variant="secondary" onClick={() => setLocation(null)}>Quitar ubicación</Button>}</div>
+        <p className="text-xs text-zinc-400">{location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : "Tocá el mapa para marcar dónde está el problema."}</p>
+        {locationError && <p role="alert" className="text-sm text-amber-300">{locationError}</p>}
+      </div>
       <div>
         <label htmlFor="description" className={labelClassName}>Contanos un poco más</label>
-        <textarea
+        <Textarea
           id="description"
           name="description"
           placeholder="Describí el problema y cualquier detalle que ayude a ubicarlo."
@@ -103,13 +125,13 @@ export function ReportForm() {
 
       {error && <p role="alert" className="rounded-xl border border-red-900 bg-red-950/60 px-4 py-3 text-sm text-red-200">{error}</p>}
 
-      <button
+      <Button
         type="submit"
         disabled={isSubmitting}
         className="min-h-12 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-wait disabled:opacity-60"
       >
         {isSubmitting ? "Enviando reporte…" : "Enviar reporte"}
-      </button>
+      </Button>
       <p className="text-center text-xs text-zinc-500">Los reportes ciudadanos son públicos y no requieren autenticación.</p>
     </form>
   );

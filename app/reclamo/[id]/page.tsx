@@ -1,5 +1,8 @@
-import { db } from "@reportar/auth/db";
-import { citizenReports } from "@reportar/auth/schema";
+import Link from "next/link";
+import Image from "next/image";
+import { ReportMap } from "@/components/report-map";
+import { db } from "@reportar/db";
+import { citizenReports } from "@reportar/db/schema";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
@@ -34,7 +37,7 @@ export default async function ComplaintPage({ params }: Props) {
   return (
     <main className="min-h-screen bg-[#09090b] px-5 py-8 text-zinc-100 sm:px-8 sm:py-12">
       <div className="mx-auto w-full max-w-3xl">
-        <a href="/" className="text-sm font-semibold text-indigo-400 transition hover:text-indigo-300">← Volver a ReportAR</a>
+        <Link href="/" className="text-sm font-semibold text-indigo-400 transition hover:text-indigo-300">← Volver a ReportAR</Link>
         <header className="mt-10">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-400">Seguimiento ciudadano</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Estado de tu reclamo</h1>
@@ -68,6 +71,8 @@ export default async function ComplaintPage({ params }: Props) {
             </div>
           </dl>
         </section>
+        {report.latitude !== null && report.longitude !== null && <section className="mt-6"><ReportMap points={[{latitude: report.latitude, longitude: report.longitude, label: report.address}]} /></section>}
+        {report.photoUrl && <section className="mt-6"><h2 className="mb-3 text-lg font-semibold">Foto del reclamo</h2><a href={`/api/reports/${report.publicId}/photo`} target="_blank" rel="noreferrer"><Image src={`/api/reports/${report.publicId}/photo`} alt="Foto adjunta al reclamo ciudadano" width={800} height={600} unoptimized className="max-h-96 w-full rounded-2xl border border-zinc-800 object-contain" /></a></section>}
         <a href="/reportar" className="mt-6 inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-900">
           Hacer otro reporte
         </a>

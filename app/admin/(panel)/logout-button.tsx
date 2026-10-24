@@ -1,15 +1,17 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { logout } from "@reportar/auth/client";
 
 export function LogoutButton() {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function handleLogout() {
     setBusy(true);
     const result = await logout();
-    if (!result.error) window.location.assign("/admin/login");
+    if (!result.error) { router.replace("/admin/login"); router.refresh(); }
     else setBusy(false);
   }
 

@@ -1,5 +1,6 @@
 import { createNeonAuth } from "@neondatabase/auth/next/server";
 import { eq } from "drizzle-orm";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { userProfiles, type UserProfile } from "./schema";
@@ -10,6 +11,7 @@ export const auth = createNeonAuth({
 });
 
 export async function getCurrentUser() {
+  await connection();
   const { data, error } = await auth.getSession();
   if (error) return null;
   return data?.user ?? null;

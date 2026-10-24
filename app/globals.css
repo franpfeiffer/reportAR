@@ -6,6 +6,17 @@
 }
 
 @theme inline {
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e4e4e7;
+  --color-secondary-foreground: #18181b;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-accent: #eef2ff;
+  --color-accent-foreground: #312e81;
+  --color-input: #a1a1aa;
+  --color-ring: #818cf8;
+  --color-muted-foreground: #71717a;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: Arial, Helvetica, sans-serif;

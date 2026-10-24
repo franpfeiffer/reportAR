@@ -1,4 +1,4 @@
-import { getSql } from "@reportar/auth/db";
+import { getSql } from "@reportar/db";
 import { connection } from "next/server";
 
 export async function GET() {

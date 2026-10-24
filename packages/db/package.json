@@ -1,0 +1,13 @@
+{
+  "name": "@reportar/db",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "peerDependencies": {
+    "@neondatabase/serverless": "1.2.0",
+    "drizzle-orm": "0.45.4"
+  }
+}
