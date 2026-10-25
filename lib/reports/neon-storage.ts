@@ -1,5 +1,13 @@
-import { createHash } from "node:crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const MAX_TELEGRAM_PHOTO_BYTES = 20 * 1024 * 1024;
 
@@ -10,7 +18,7 @@ function storageClient() {
   if (client) return client;
   const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION } = process.env;
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !AWS_ENDPOINT_URL_S3 || !AWS_REGION) {
-    throw new Error("Telegram photo storage is not configured");
+    throw new Error("Neon Object Storage is not configured");
   }
   const endpoint = new URL(AWS_ENDPOINT_URL_S3);
   if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) {
@@ -20,6 +28,7 @@ function storageClient() {
     endpoint: endpoint.toString(),
     region: AWS_REGION,
     forcePathStyle: true,
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
   });
   return client;
@@ -139,9 +148,53 @@ export async function storeTelegramPhoto(reportId: string, fileId: string) {
   return { key, contentType: image.contentType, filename: `foto.${image.extension}` };
 }
 
-const STORAGE_KEY_PATTERN = /^reports\/[0-9a-f-]{36}\/telegram-[0-9a-f]{24}\.(jpg|png|gif|webp|bmp|avif)$/i;
+const REPORT_ID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const STORAGE_KEY_PATTERN = new RegExp(
+  `^reports/${REPORT_ID_PATTERN}/(?:telegram-[0-9a-f]{24}\\.(?:jpg|png|gif|webp|bmp|avif)|web-[0-9a-f-]{36}-[a-z0-9._-]{1,100})$`,
+  "i",
+);
+
+export function sanitizePhotoFilename(filename: string) {
+  return filename.normalize("NFKD").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100) || "foto";
+}
+
+export async function createReportPhotoUpload(reportId: string, filename: string, contentType: string, maxBytes: number) {
+  const key = `reports/${reportId}/web-${randomUUID()}-${sanitizePhotoFilename(filename)}`;
+  const signedPost = await createPresignedPost(storageClient(), {
+    Bucket: bucket(),
+    Key: key,
+    Fields: { "Content-Type": contentType, "Cache-Control": "private, no-store" },
+    Conditions: [
+      ["eq", "$Content-Type", contentType],
+      ["eq", "$Cache-Control", "private, no-store"],
+      ["content-length-range", 1, maxBytes],
+    ],
+    Expires: 15 * 60,
+  });
+  return { key, url: signedPost.url, fields: signedPost.fields };
+}
+
+export async function headReportPhoto(key: string) {
+  if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Invalid report photo storage key");
+  return storageClient().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
+}
+
+export async function deleteReportPhoto(key: string) {
+  if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Invalid report photo storage key");
+  return storageClient().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+}
+
+export async function getSignedReportPhotoUrl(key: string, options: { download: boolean; filename: string }) {
+  if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Invalid report photo storage key");
+  const filename = sanitizePhotoFilename(options.filename);
+  return getSignedUrl(storageClient(), new GetObjectCommand({
+    Bucket: bucket(),
+    Key: key,
+    ...(options.download ? { ResponseContentDisposition: `attachment; filename="${filename}"` } : {}),
+  }), { expiresIn: 15 * 60 });
+}
 
 export async function getTelegramPhoto(key: string) {
-  if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Invalid Telegram photo storage key");
+  if (!STORAGE_KEY_PATTERN.test(key)) throw new Error("Invalid report photo storage key");
   return storageClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
 }

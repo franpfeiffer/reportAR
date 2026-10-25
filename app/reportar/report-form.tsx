@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -213,17 +212,29 @@ export function ReportForm() {
   async function uploadReportPhoto(report: CreatedReport, file: File) {
     if (!report.photoUploadToken) throw new Error("Falta la autorización de la foto.");
     const safeName = file.name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100) || "foto";
-    const pathname = `reports/${report.publicId}/${crypto.randomUUID()}-${safeName}`;
-    const blob = await upload(pathname, file, {
-      access: "public",
-      handleUploadUrl: "/api/reports/photo-upload",
-      clientPayload: JSON.stringify({ reportId: report.publicId, token: report.photoUploadToken }),
-      contentType: file.type || "application/octet-stream",
+    const contentType = file.type || "application/octet-stream";
+    const authorization = await fetch("/api/reports/photo-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reportId: report.publicId,
+        token: report.photoUploadToken,
+        filename: safeName,
+        contentType,
+        size: file.size,
+      }),
     });
+    if (!authorization.ok) throw new Error("No pudimos autorizar la subida de la foto.");
+    const upload = await authorization.json() as { key: string; url: string; fields: Record<string, string> };
+    const form = new FormData();
+    for (const [key, value] of Object.entries(upload.fields)) form.append(key, value);
+    form.append("file", file);
+    const uploaded = await fetch(upload.url, { method: "POST", body: form });
+    if (!uploaded.ok) throw new Error("No pudimos subir la foto a Neon.");
     const response = await fetch(`/api/reports/${report.publicId}/photo/attach`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: report.photoUploadToken, url: blob.url }),
+      body: JSON.stringify({ token: report.photoUploadToken, key: upload.key }),
     });
     if (!response.ok) throw new Error("No pudimos vincular la foto al reporte.");
   }

@@ -3,7 +3,7 @@ import { citizenReports } from "@reportar/db/schema";
 import { eq } from "drizzle-orm";
 import { head } from "@vercel/blob";
 import { isUuid } from "@/lib/reports/validation";
-import { getTelegramPhoto } from "@/lib/reports/telegram-photo";
+import { getSignedReportPhotoUrl } from "@/lib/reports/neon-storage";
 
 export async function GET(request: Request, { params }: {params: Promise<{id: string}>}) {
   const { id } = await params;
@@ -18,19 +18,13 @@ export async function GET(request: Request, { params }: {params: Promise<{id: st
   const download = new URL(request.url).searchParams.has("download");
   if (report.photoStorageKey) {
     try {
-      const object = await getTelegramPhoto(report.photoStorageKey);
-      if (!object.Body) return new Response(null, {status: 404});
-      const contentType = report.photoContentType || object.ContentType || "application/octet-stream";
-      if (!/^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(contentType)) return new Response(null, {status: 404});
-      const filename = (report.photoFilename || "foto").replace(/[\r\n"\\]/g, "_").slice(0, 100);
-      const headers = new Headers({
-        "Content-Type": contentType,
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
-        "Cache-Control": "private, no-store",
-        "X-Content-Type-Options": "nosniff",
+      const contentType = report.photoContentType || "application/octet-stream";
+      const isDisplayableImage = /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(contentType);
+      const url = await getSignedReportPhotoUrl(report.photoStorageKey, {
+        download: download || !isDisplayableImage,
+        filename: report.photoFilename || "foto",
       });
-      if (typeof object.ContentLength === "number") headers.set("Content-Length", String(object.ContentLength));
-      return new Response(object.Body.transformToWebStream(), {headers});
+      return temporaryRedirect(url);
     } catch {
       return new Response(null, {status: 503});
     }
@@ -41,8 +35,12 @@ export async function GET(request: Request, { params }: {params: Promise<{id: st
     if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com")) return new Response(null, {status: 404});
     if (download) {
       const blob = await head(url.toString());
-      return Response.redirect(blob.downloadUrl, 307);
+      return temporaryRedirect(blob.downloadUrl);
     }
-    return Response.redirect(url, 307);
+    return temporaryRedirect(url.toString());
   } catch { return new Response(null, {status: 404}); }
+}
+
+function temporaryRedirect(url: string) {
+  return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store" } });
 }

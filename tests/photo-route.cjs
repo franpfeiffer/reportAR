@@ -6,20 +6,15 @@ const assert = require('node:assert/strict');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
 const id = '12345678-1234-4123-8123-123456789012';
-const image = Buffer.from('private-image');
 
 function compileRoute(report, photoUrl = null, photoStorageKey = 'reports/key') {
   const exports = {};
   const projection = { photoUrl, photoStorageKey, photoContentType: 'image/png', photoFilename: 'foto.png' };
   const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => report ? [projection] : [] }) }) }) };
   const photoService = {
-    getTelegramPhoto: async key => {
+    getSignedReportPhotoUrl: async (key, options) => {
       assert.equal(key, projection.photoStorageKey);
-      return {
-        ContentLength: image.length,
-        ContentType: 'image/png',
-        Body: { transformToWebStream: () => new ReadableStream({ start(controller) { controller.enqueue(image); controller.close(); } }) },
-      };
+      return `https://storage.example.test/signed/${options.download ? 'download' : 'inline'}`;
     },
   };
   const source = fs.readFileSync(path.join(root, 'app/api/reports/[id]/photo/route.ts'), 'utf8');
@@ -31,7 +26,7 @@ function compileRoute(report, photoUrl = null, photoStorageKey = 'reports/key') 
         : name === 'drizzle-orm' ? { eq: () => true }
           : name === '@vercel/blob' ? { head: async () => ({ downloadUrl: 'https://download.example.test/foto.png' }) }
             : name === '@/lib/reports/validation' ? { isUuid: value => /^[0-9a-f-]{36}$/i.test(value) }
-              : name === '@/lib/reports/telegram-photo' ? photoService : require(name),
+              : name === '@/lib/reports/neon-storage' ? photoService : require(name),
     Buffer,
     Response,
     Headers,
@@ -44,13 +39,13 @@ function compileRoute(report, photoUrl = null, photoStorageKey = 'reports/key') 
 (async () => {
   const { GET } = compileRoute(true);
   const inline = await GET(new Request(`https://reportar.test/api/reports/${id}/photo`), { params: Promise.resolve({ id }) });
-  assert.equal(inline.status, 200);
-  assert.equal(inline.headers.get('content-type'), 'image/png');
-  assert.equal(inline.headers.get('content-disposition'), 'inline; filename="foto.png"');
-  assert.deepEqual(Buffer.from(await inline.arrayBuffer()), image);
+  assert.equal(inline.status, 307);
+  assert.equal(inline.headers.get('location'), 'https://storage.example.test/signed/inline');
+  assert.equal(inline.headers.get('cache-control'), 'private, no-store');
 
   const download = await GET(new Request(`https://reportar.test/api/reports/${id}/photo?download=1`), { params: Promise.resolve({ id }) });
-  assert.equal(download.headers.get('content-disposition'), 'attachment; filename="foto.png"');
+  assert.equal(download.status, 307);
+  assert.equal(download.headers.get('location'), 'https://storage.example.test/signed/download');
 
   const webBlobUrl = 'https://abc.public.blob.vercel-storage.com/foto.png';
   const { GET: getWebBlob } = compileRoute(true, webBlobUrl, null);
@@ -63,5 +58,5 @@ function compileRoute(report, photoUrl = null, photoStorageKey = 'reports/key') 
 
   const missing = await GET(new Request('https://reportar.test/api/reports/not-a-uuid/photo'), { params: Promise.resolve({ id: 'not-a-uuid' }) });
   assert.equal(missing.status, 404);
-  console.log('Telegram photo route tests passed (private read, Telegram inline/download, Vercel Blob inline/download, invalid ID)');
+  console.log('Photo route tests passed (Neon signed URLs, legacy Vercel Blob inline/download, invalid ID)');
 })().catch(error => { console.error(error); process.exitCode = 1; });

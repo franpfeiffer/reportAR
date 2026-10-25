@@ -5,7 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { parseBotReport } from "@/lib/reports/bot-validation";
 import { ValidationError } from "@/lib/reports/validation";
 import { classifyReport, unavailableClassification } from "@/lib/reports/classification";
-import { storeTelegramPhoto } from "@/lib/reports/telegram-photo";
+import { storeTelegramPhoto } from "@/lib/reports/neon-storage";
 
 const MAX_BYTES = 20_000;
 export async function POST(request: Request) {

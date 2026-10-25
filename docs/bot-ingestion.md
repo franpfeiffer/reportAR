@@ -31,11 +31,11 @@ Migración versionada: `drizzle/0005_bot_reports.sql`. Aplicada primero en `dev-
 - Endpoint S3: https://br-billowing-firefly-b7dfmibk.storage.c-13.us-east-1.aws.neon.tech
 - Credencial de servidor con storage:read y storage:write, guardada en `.env` ignorado.
 
-Variables de servidor en Vercel: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION, REPORT_IMAGES_BUCKET y TELEGRAM_BOT_TOKEN. El SDK S3 usa direccionamiento path-style (`forcePathStyle: true`). No exponer credenciales ni guardar URLs firmadas en la base.
+Variables de servidor en Vercel: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3, AWS_REGION, REPORT_IMAGES_BUCKET y TELEGRAM_BOT_TOKEN. Las fotos del bot y las adjuntas en la web se guardan en Neon Object Storage. El SDK S3 usa direccionamiento path-style (`forcePathStyle: true`); las subidas web usan formularios POST firmados y CORS está habilitado para POST en el bucket. No exponer credenciales ni guardar URLs firmadas en la base.
 
 La configuración declarativa está en `infrastructure/storage/neon.ts`, deliberadamente separada del neon.ts principal: Object Storage no está disponible en São Paulo y ambos proyectos tienen ramas independientes. No aplicar esa configuración al proyecto de base/Auth ni reutilizarlo para Pixly.
 
-Se verificó carga/lectura autenticada de un archivo temporal y se retiró. No se requiere storage para guardar reportes.
+Se verificó carga/lectura autenticada de un archivo temporal y se retiró. El bucket privado sirve las fotos web mediante URLs GET firmadas de corta duración.
 
 ## Conectar n8n después del despliegue
 

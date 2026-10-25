@@ -1,9 +1,10 @@
-import { head } from "@vercel/blob";
 import { createHash } from "node:crypto";
 import { db } from "@reportar/db";
 import { citizenReports } from "@reportar/db/schema";
 import { and, eq } from "drizzle-orm";
+import { head } from "@vercel/blob";
 import { canUploadPhoto, MAX_PHOTO_BYTES } from "@/lib/reports/photo-upload";
+import { deleteReportPhoto, headReportPhoto } from "@/lib/reports/neon-storage";
 import { isRecord, isUuid } from "@/lib/reports/validation";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,26 +13,53 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (Number(request.headers.get("content-length")) > 4096) return Response.json({ error: "Solicitud inválida." }, { status: 413 });
   try {
     const body: unknown = await request.json();
-    if (!isRecord(body) || typeof body.url !== "string" || body.url.length > 2048 || !await canUploadPhoto(id, body.token)) {
+    if (!isRecord(body) || !await canUploadPhoto(id, body.token)) {
       return Response.json({ error: "No se puede adjuntar la foto a este reporte." }, { status: 403 });
     }
-    const url = new URL(body.url);
-    if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com")) {
-      return Response.json({ error: "La foto no pertenece al almacenamiento de ReportAR." }, { status: 400 });
+    let storageKey: string | null = null;
+    let photoUrl: string | null = null;
+    let contentType = "application/octet-stream";
+    let filename = "foto";
+    if (typeof body.key === "string" && body.key.length <= 220 && body.key.startsWith(`reports/${id}/web-`)) {
+      const metadata = await headReportPhoto(body.key);
+      if (typeof metadata.ContentLength !== "number" || metadata.ContentLength < 1 || metadata.ContentLength > MAX_PHOTO_BYTES) {
+        await deleteReportPhoto(body.key).catch(() => {});
+        return Response.json({ error: "La foto no es válida o supera los 100 MB." }, { status: 400 });
+      }
+      storageKey = body.key;
+      contentType = metadata.ContentType || contentType;
+      filename = body.key.split("/").pop()?.replace(/^web-[0-9a-f-]{36}-/, "") || filename;
+    } else if (typeof body.url === "string" && body.url.length <= 2048) {
+      // Compatibility for the existing n8n workflow while it is migrated.
+      const url = new URL(body.url);
+      if (url.protocol !== "https:" || !url.hostname.endsWith(".public.blob.vercel-storage.com")) {
+        return Response.json({ error: "La foto no pertenece a un almacenamiento admitido." }, { status: 400 });
+      }
+      const blob = await head(url.toString());
+      if (!blob.pathname.startsWith(`reports/${id}/`) || blob.size < 1 || blob.size > MAX_PHOTO_BYTES) {
+        return Response.json({ error: "La foto no corresponde a este reporte." }, { status: 400 });
+      }
+      photoUrl = blob.url;
+      contentType = blob.contentType;
+      filename = blob.pathname.split("/").pop()?.replace(/^[0-9a-f-]{36}-/, "") || filename;
+    } else {
+      return Response.json({ error: "La foto no pertenece a este reporte." }, { status: 400 });
     }
-    const blob = await head(url.toString());
-    if (!blob.pathname.startsWith(`reports/${id}/`) || blob.size > MAX_PHOTO_BYTES) {
-      return Response.json({ error: "La foto no corresponde a este reporte." }, { status: 400 });
-    }
-    const filename = blob.pathname.split("/").pop()?.replace(/^[0-9a-f-]{36}-/, "") || "foto";
     const [updated] = await db.update(citizenReports).set({
-      photoUrl: blob.url,
-      photoContentType: blob.contentType,
+      photoUrl,
+      photoStorageKey: storageKey,
+      photoContentType: contentType,
       photoFilename: filename,
       photoUploadTokenHash: null,
       updatedAt: new Date(),
-    }).where(and(eq(citizenReports.publicId, id), eq(citizenReports.photoUploadTokenHash, hashToken(body.token)))).returning({ id: citizenReports.id });
-    if (!updated) return Response.json({ error: "La foto ya fue adjuntada." }, { status: 409 });
+    }).where(and(
+      eq(citizenReports.publicId, id),
+      eq(citizenReports.photoUploadTokenHash, hashToken(body.token)),
+    )).returning({ id: citizenReports.id });
+    if (!updated) {
+      if (storageKey) await deleteReportPhoto(storageKey).catch(() => {});
+      return Response.json({ error: "La foto ya fue adjuntada." }, { status: 409 });
+    }
     return Response.json({ ok: true });
   } catch {
     return Response.json({ error: "No pudimos guardar la foto. Intentá nuevamente." }, { status: 503 });

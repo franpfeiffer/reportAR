@@ -61,7 +61,7 @@ const photoStorage={storeTelegramPhoto:async reportId=>{
  if(photoStorageFailures>0){photoStorageFailures--;throw new Error('storage unavailable');}
  return {key:`reports/${reportId}/telegram-abcdefabcdefabcdefabcdef.jpg`,contentType:'image/jpeg',filename:'foto.jpg'};
 }};
-const route=compile('app/api/bot/reports/route.ts',p=>p==='@reportar/db'?{db}:p==='@reportar/db/schema'?schema:p==='drizzle-orm'?{eq:(column,value)=>({column,value}),and:(...conditions)=>conditions,isNull:column=>({column,isNull:true})}:p==='@/lib/reports/bot-validation'?bot:p==='@/lib/reports/validation'?validation:p==='@/lib/reports/classification'?classification:p==='@/lib/reports/telegram-photo'?photoStorage:require(p));
+const route=compile('app/api/bot/reports/route.ts',p=>p==='@reportar/db'?{db}:p==='@reportar/db/schema'?schema:p==='drizzle-orm'?{eq:(column,value)=>({column,value}),and:(...conditions)=>conditions,isNull:column=>({column,isNull:true})}:p==='@/lib/reports/bot-validation'?bot:p==='@/lib/reports/validation'?validation:p==='@/lib/reports/classification'?classification:p==='@/lib/reports/neon-storage'?photoStorage:require(p));
 process.env.REPORTS_API_TOKEN='test-only-token';
 async function send(body=payload,extra={}){return route.POST(new Request('http://localhost/api/bot/reports',{method:'POST',headers:{authorization:'Bearer test-only-token','idempotency-key':body?.external_id||payload.external_id,...extra},body:typeof body==='string'?body:JSON.stringify(body)}));}
 (async()=>{
