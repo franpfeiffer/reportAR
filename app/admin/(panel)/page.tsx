@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ReportMap } from "@/components/report-map";
 import { StatusPill } from "@/components/status-pill";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
 
   return (
     <div className="min-h-screen bg-[#F1F5F2]">
-      <header className="bg-[#14433F] text-white"><div className="site-shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3"><Brand inverse /><div className="flex items-center gap-3 sm:gap-5"><span className="hidden text-sm text-[#C5E0D4] sm:inline">Panel municipal</span><LogoutButton /></div></div></header>
+      <header className="bg-[#14433F] text-white"><div className="site-shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3"><Brand inverse /><div className="flex items-center gap-3 sm:gap-5"><ThemeToggle inverse /><span className="hidden text-sm text-[#C5E0D4] sm:inline">Panel municipal</span><LogoutButton /></div></div></header>
       <main className="site-shell py-10 sm:py-14">
         <div className="flex flex-wrap items-end justify-between gap-6"><div><h1 className="page-title">Reclamos de la comunidad.</h1><p className="body-lead mt-4 max-w-2xl">Revisá cada situación, ubicala en el mapa y mantené actualizado su estado.</p></div><span className="rounded-full bg-[#DCECE5] px-4 py-2 text-sm font-semibold text-[#116D63]">{reports.length} en esta página</span></div>
 
