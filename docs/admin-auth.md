@@ -1,6 +1,6 @@
 # Municipal authentication
 
-Admin routes use Neon Auth OAuth. `packages/auth` owns the Neon Auth client/server config, session and profile helpers, role checks, and logout. Every OAuth user gets a `user_profiles` row with the `CITIZEN` role by default. A successful Google or Vercel login alone never grants municipal access.
+Admin routes use Neon Auth OAuth. `packages/auth` owns the Neon Auth client/server config, session and profile helpers, role checks, and logout. A successful OAuth login alone never grants municipal access.
 
 ## Configure providers
 
@@ -16,17 +16,16 @@ The application sends users back to `/admin` after Neon Auth completes. Add each
 
 The Vercel login button remains visible but disabled until its provider is configured. Then set `NEXT_PUBLIC_ENABLE_VERCEL_OAUTH=true` in the app environment.
 
-## Grant municipal access
+## Designated municipal administrators
 
-New profiles remain citizens. Promote a verified administrator explicitly after their first OAuth sign-in:
+Only these normalized Google account emails receive `MUNICIPAL_ADMIN`:
 
-```sql
-UPDATE user_profiles
-SET role = 'MUNICIPAL_ADMIN', updated_at = now()
-WHERE email = 'admin@example.gov';
+```text
+ateneo2003@gmail.com
+pfeifferfran1@gmail.com
 ```
 
-Run this only from a trusted database administration session. Do not expose a role-promotion endpoint to users.
+The allowlist lives in `packages/auth/src/index.ts`. Every profile lookup reconciles the stored role against it, so other authenticated users remain `CITIZEN` even if their profile previously had an admin role. Update the list in code when an administrator must be added or removed; do not expose role promotion to users.
 
 ## Local environment
 

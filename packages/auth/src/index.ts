@@ -5,6 +5,11 @@ import { redirect } from "next/navigation";
 import { db } from "./db";
 import { userProfiles, type UserProfile } from "./schema";
 
+const municipalAdminEmails = new Set([
+  "ateneo2003@gmail.com",
+  "pfeifferfran1@gmail.com",
+]);
+
 export const auth = createNeonAuth({
   baseUrl: process.env.NEON_AUTH_BASE_URL!,
   cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET! },
@@ -20,17 +25,19 @@ export async function getCurrentUser() {
 export async function getCurrentProfile(): Promise<UserProfile | null> {
   const user = await getCurrentUser();
   if (!user) return null;
+  const email = user.email?.trim().toLowerCase() ?? "";
+  const role = municipalAdminEmails.has(email) ? "MUNICIPAL_ADMIN" : "CITIZEN";
   await db.insert(userProfiles).values({
     authUserId: user.id,
-    email: user.email ?? "",
+    email,
     name: user.name ?? "",
-    role: "MUNICIPAL_ADMIN",
+    role,
   }).onConflictDoUpdate({
     target: userProfiles.authUserId,
     set: {
-      email: user.email ?? "",
+      email,
       name: user.name ?? "",
-      role: "MUNICIPAL_ADMIN",
+      role,
       updatedAt: new Date(),
     },
   });
