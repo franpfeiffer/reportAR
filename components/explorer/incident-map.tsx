@@ -108,7 +108,6 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MapLibreMap | null>(null);
   const popup = useRef<MapLibrePopup | null>(null);
-  const territoryMarkers = useRef<MapLibreMarker[]>([]);
   const reportMarkers = useRef<MapLibreMarker[]>([]);
   const scope = useRef("");
   const callbacks = useRef({ onTerritory, onReport });
@@ -152,34 +151,11 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       instance.addControl(new AttributionControl({ compact: true, customAttribution: '<a href="https://www.argentina.gob.ar/georef">Límites: GeoRef / IGN</a>' }), "bottom-right");
 
       const rebuildMarkers = () => {
-        territoryMarkers.current.forEach(marker => marker.remove());
         reportMarkers.current.forEach(marker => marker.remove());
-        territoryMarkers.current = [];
         reportMarkers.current = [];
         const current = view.current;
         const currentData = current.data;
         if (!currentData) return;
-
-        const territories = current.province ? currentData.municipalities : currentData.provinces;
-        const territoryGroups = clusterPoints(instance, territories.filter(item => !current.municipality && item.count > 0), item => [item.center[1], item.center[0]], 42);
-        for (const group of territoryGroups) {
-          const total = group.items.reduce((sum, item) => sum + item.count, 0);
-          const names = group.items.map(item => `${item.name}: ${item.count}`).join(" · ");
-          const element = document.createElement("button");
-          element.type = "button";
-          element.className = "territory-map-count";
-          element.textContent = `${group.items.length === 1 ? group.items[0].name : `${group.items.length} zonas`} · ${total.toLocaleString("es-AR")}`;
-          element.title = names;
-          element.setAttribute("aria-label", names);
-          element.addEventListener("click", event => {
-            event.stopPropagation();
-            if (group.items.length === 1) {
-              const territory = group.items[0];
-              callbacks.current.onTerritory(current.province || territory.id, current.province ? territory.id : "");
-            } else instance.easeTo({ center: group.position, zoom: Math.min(instance.getZoom() + 2.2, current.province ? 9 : 7), duration: 650 });
-          });
-          territoryMarkers.current.push(new Marker({ element, anchor: "center" }).setLngLat(group.position).addTo(instance));
-        }
 
         if (current.municipality) {
           const reportGroups = clusterPoints(instance, currentData.markers.filter(report => report.municipalityId === current.municipality && report.latitude !== null && report.longitude !== null), report => [report.longitude!, report.latitude!], 34);
@@ -277,7 +253,6 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       themeObserver?.disconnect();
       popup.current?.remove();
       popup.current = null;
-      territoryMarkers.current.forEach(marker => marker.remove());
       reportMarkers.current.forEach(marker => marker.remove());
       map.current?.remove();
       map.current = null;
@@ -359,9 +334,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       <button type="button" onClick={() => map.current?.zoomOut()} aria-label="Alejar mapa">−</button>
       <button type="button" onClick={() => { callbacks.current.onTerritory(""); map.current?.fitBounds(countryBounds, { padding: { top: 25, right: 25, bottom: 25, left: 25 }, duration: 650, maxZoom: 4.2 }); }} aria-label="Ver toda Argentina"><MapIcon kind="layers" size={18}/></button>
     </div>
-    <div className="map-hint"><span className="map-hint-dot" />{municipality ? "Cada punto es un reporte; los círculos agrupan reportes cercanos" : province ? "Totales por municipio · Elegí uno para ver sus reportes" : "Totales por provincia · Elegí una para explorar"}</div>
     {(!ready || renderedProvince !== province) && !error && !mapError && <div className="map-loading" role="status">Cargando mapa de Argentina…</div>}
     {(error || mapError) && <div className="map-message" role="alert">{mapError || error}<button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
-    <div className="map-legend">{municipality ? <span>{Math.min(data?.located ?? 0, data?.markerLimit ?? 400)} de {data?.total ?? 0} reportes tienen ubicación</span> : <><span className="map-legend-scale"/>Menos <span aria-hidden="true">—</span> Más incidentes</>}</div>
   </div>;
 }
