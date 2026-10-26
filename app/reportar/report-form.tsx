@@ -7,9 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ReportMap, type MapPoint } from "@/components/report-map";
+import { statusLabels, type ReportStatus } from "@/lib/reports/validation";
 
 type CreatedReport = { publicId: string; photoUploadToken?: string };
 type GeographyOption = { id: string; name: string };
+type SimilarReport = { id: string; category: string; status: ReportStatus; address: string; description: string; createdAt: string };
+type StoredDraft = { category?: string; description?: string; address?: string; provinceId?: string; provinceName?: string; cityId?: string; cityName?: string; latitude?: number; longitude?: number };
+const DRAFT_KEY = "reportar:citizen-report-draft:v1";
 const MAX_PHOTO_BYTES = 100 * 1024 * 1024;
 
 async function createPhotoPreview(file: File): Promise<string | null> {
@@ -41,6 +45,8 @@ export function ReportForm() {
   const points = useMemo(() => location ? [location] : [], [location]);
   const [locationError, setLocationError] = useState("");
   const [address, setAddress] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
   const [addressHint, setAddressHint] = useState("");
   const addressEditVersion = useRef(0);
   const forwardSearch = useRef<AbortController | null>(null);
@@ -67,11 +73,73 @@ export function ReportForm() {
   const [error, setError] = useState("");
   const [createdReport, setCreatedReport] = useState<CreatedReport | null>(null);
   const [copied, setCopied] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [similarReports, setSimilarReports] = useState<SimilarReport[]>([]);
+  const restoredDraft = useRef<StoredDraft | null>(null);
 
   useEffect(() => () => {
     previewRevision.current += 1;
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as StoredDraft;
+        restoredDraft.current = draft;
+        setCategory(typeof draft.category === "string" ? draft.category : "");
+        setDescription(typeof draft.description === "string" ? draft.description : "");
+        setAddress(typeof draft.address === "string" ? draft.address : "");
+        setProvinceId(typeof draft.provinceId === "string" ? draft.provinceId : "");
+        setProvinceName(typeof draft.provinceName === "string" ? draft.provinceName : "");
+        setCityId(typeof draft.cityId === "string" ? draft.cityId : "");
+        setCityName(typeof draft.cityName === "string" ? draft.cityName : "");
+        setIsLoadingLocalities(Boolean(draft.provinceId));
+        if (Number.isFinite(draft.latitude) && Number.isFinite(draft.longitude)) {
+          const point = { latitude: draft.latitude!, longitude: draft.longitude!, label: typeof draft.address === "string" ? draft.address : "" };
+          skipReverseGeocodeFor.current = `${point.latitude},${point.longitude}`;
+          locationValue.current = point;
+          setLocation(point);
+        }
+      }
+    } catch { /* Ignore a damaged local draft and keep the form usable. */ }
+    setIsOnline(navigator.onLine);
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const draft: StoredDraft = { category, description, address, provinceId, provinceName, cityId, cityName, latitude: location?.latitude, longitude: location?.longitude };
+    try {
+      const hasContent = Object.values(draft).some(value => value !== undefined && value !== "");
+      if (hasContent) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      else localStorage.removeItem(DRAFT_KEY);
+      setDraftSaved(hasContent);
+    } catch { setDraftSaved(false); }
+  }, [draftReady, category, description, address, provinceId, provinceName, cityId, cityName, location]);
+
+  useEffect(() => {
+    const updateOnline = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => { window.removeEventListener("online", updateOnline); window.removeEventListener("offline", updateOnline); };
+  }, []);
+
+  useEffect(() => {
+    if (!category || !location) { setSimilarReports([]); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ category, latitude: String(location.latitude), longitude: String(location.longitude) });
+      fetch(`/api/reports/similar?${params}`, { signal: controller.signal })
+        .then(response => response.ok ? response.json() as Promise<{ reports: SimilarReport[] }> : { reports: [] })
+        .then(result => { if (!controller.signal.aborted) setSimilarReports(result.reports); })
+        .catch(() => { if (!controller.signal.aborted) setSimilarReports([]); });
+    }, 600);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [category, location]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,6 +167,20 @@ export function ReportForm() {
       .finally(() => { if (!controller.signal.aborted) setIsLoadingLocalities(false); });
     return () => controller.abort();
   }, [provinceId]);
+
+  useEffect(() => {
+    const draft = restoredDraft.current;
+    if (!draft || !provinces.length) return;
+    const province = provinces.find(item => item.id === draft.provinceId);
+    if (province) setProvinceName(province.name);
+    if (draft.cityId && isLoadingLocalities) return;
+    if (draft.cityId) {
+      const city = localities.find(item => item.id === draft.cityId);
+      if (city) setCityName(city.name);
+      else { setCityId(""); setCityName(""); }
+    }
+    restoredDraft.current = null;
+  }, [provinces, localities, isLoadingLocalities]);
 
   function choosePhoto(file: File | null) {
     const revision = ++previewRevision.current;
@@ -307,6 +389,7 @@ export function ReportForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          website: formData.get("website"),
           latitude: selectedLocation?.latitude ?? null,
           longitude: selectedLocation?.longitude ?? null,
           category: formData.get("category"),
@@ -320,6 +403,7 @@ export function ReportForm() {
         setError(result.error ?? "No pudimos enviar el reporte. Intentá nuevamente.");
         return;
       }
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* Storage is optional. */ }
       setCreatedReport(result);
       if (photo) {
         setIsUploadingPhoto(true);
@@ -332,6 +416,12 @@ export function ReportForm() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function discardDraft() {
+    setCategory(""); setDescription(""); setAddress(""); setProvinceId(""); setProvinceName(""); setCityId(""); setCityName("");
+    locationValue.current = null; setLocation(null); choosePhoto(null);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* Storage is optional. */ }
   }
 
   if (createdReport) {
@@ -353,16 +443,19 @@ export function ReportForm() {
 
   return (
     <form onSubmit={submitReport} className="grid gap-9">
+      <div className="absolute -left-[9999px] h-px w-px overflow-hidden" aria-hidden="true"><label htmlFor="website">Dejá este campo vacío</label><input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" /></div>
+      {(!isOnline || draftSaved) && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#CBDCD4] bg-[#F1F5F2] px-4 py-3 text-sm text-[#42615B]">{!isOnline ? <p role="status">Estás sin conexión. Guardamos el texto en este dispositivo; las fotos se vuelven a adjuntar al recuperar conexión.</p> : <p role="status">Borrador guardado en este dispositivo.</p>}{draftSaved && <button type="button" className="civic-link text-sm" onClick={discardDraft}>Descartar borrador</button>}</div>}
       <section>
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Qué pasa?</h2>
-        <div className="mt-5"><label htmlFor="category" className="form-label">Tipo de problema</label><select id="category" name="category" className="field-control" defaultValue="" required><option value="" disabled>Elegí una categoría</option><option value="BACHE">Bache o vereda rota</option><option value="INUNDACION">Inundación</option><option value="ALUMBRADO">Alumbrado público</option><option value="BASURA">Basura o limpieza</option><option value="ARBOLADO">Árboles y espacios verdes</option><option value="OTRO">Otro problema</option></select></div>
-        <div className="mt-5"><label htmlFor="description" className="form-label">Describí la situación</label><Textarea id="description" name="description" placeholder="Por ejemplo: la luminaria de la esquina no funciona desde el martes" rows={5} required className="field-control min-h-36 resize-y" /><p className="form-help">Contá también si hay peligro inmediato, daños en curso, tránsito o acceso bloqueado, o un servicio esencial interrumpido. Eso ayuda a priorizar la reparación.</p></div>
+        <div className="mt-5"><label htmlFor="category" className="form-label">Tipo de problema</label><select id="category" name="category" className="field-control" value={category} onChange={event => setCategory(event.target.value)} required><option value="" disabled>Elegí una categoría</option><option value="BACHE">Bache o vereda rota</option><option value="INUNDACION">Inundación</option><option value="ALUMBRADO">Alumbrado público</option><option value="BASURA">Basura o limpieza</option><option value="ARBOLADO">Árboles y espacios verdes</option><option value="OTRO">Otro problema</option></select></div>
+        <div className="mt-5"><label htmlFor="description" className="form-label">Describí la situación</label><Textarea id="description" name="description" placeholder="Por ejemplo: la luminaria de la esquina no funciona desde el martes" rows={5} required value={description} onChange={event => setDescription(event.target.value)} className="field-control min-h-36 resize-y" /><p className="form-help">Contá también si hay peligro inmediato, daños en curso, tránsito o acceso bloqueado, o un servicio esencial interrumpido. Eso ayuda a priorizar la reparación.</p></div>
       </section>
 
       <section className="border-t border-[#CBDCD4] pt-8">
         <h2 className="text-xl font-bold tracking-[-.035em]">¿Dónde ocurre?</h2>
         <div className="mt-5"><label htmlFor="address" className="form-label">Calle y altura</label><Input id="address" name="address" type="text" autoComplete="street-address" placeholder="Ej. Córdoba 1900" required className="field-control" value={address} onBlur={() => void locateAddress()} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void locateAddress(); } }} onChange={event => handleAddressChange(event.target.value)} /><div className="mt-5 grid gap-5 sm:grid-cols-2"><div><label htmlFor="province" className="form-label">Provincia</label><select id="province" name="province" className="field-control" value={provinceId} onChange={event => selectProvince(event.target.value)} required={!location} disabled={isLoadingProvinces}><option value="">{isLoadingProvinces ? "Cargando provincias…" : "Elegí una provincia"}</option>{provinces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div><label htmlFor="city" className="form-label">Ciudad o localidad</label><select id="city" name="city" className="field-control" value={cityId} onChange={event => selectCity(event.target.value)} required={!location} disabled={!provinceId || isLoadingLocalities}><option value="">{!provinceId ? "Primero elegí una provincia" : isLoadingLocalities ? "Cargando ciudades…" : "Elegí una ciudad o localidad"}</option>{localities.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></div><p className="form-help">Elegí provincia y ciudad para ubicar la dirección. También podés usar tu ubicación actual.</p>{geographyError && <p role="alert" className="form-help text-[#A43E30]">{geographyError}</p>}<div className="mt-2 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={() => void locateAddress()} disabled={isSearchingAddress || !address.trim() || !cityName || !provinceName} className="h-9 rounded-lg px-3 text-sm">{isSearchingAddress ? "Buscando…" : "Ubicar dirección en el mapa"}</Button>{addressHint && <p role="status" className="form-help !mt-0">{addressHint} <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="underline">© OpenStreetMap</a></p>}</div></div>
         <div className="mt-6"><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><p className="form-label !mb-0">Marcá el punto en el mapa</p><span className="text-xs text-[#5B746F]">Opcional</span></div><ReportMap points={points} onSelect={chooseLocation} /><div className="mt-3 flex flex-wrap items-center gap-3"><Button type="button" variant="secondary" onClick={locate} className="h-10 rounded-lg px-4">Usar mi ubicación</Button>{location && <button type="button" className="civic-link text-sm" onClick={() => chooseLocation(null)}>Quitar punto</button>}</div><p className="form-help">{location ? `Punto elegido: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : "Tocá el mapa para señalar el lugar exacto."}</p>{locationError && <p role="alert" className="mt-2 text-sm text-[#A43E30]">{locationError}</p>}</div>
+        {similarReports.length > 0 && <aside className="mt-6 rounded-xl border border-[#E8D6A6] bg-[#FFF9E9] p-4" aria-live="polite"><h3 className="font-semibold text-[#684A14]">Encontramos reportes parecidos cerca</h3><p className="mt-1 text-sm text-[#684A14]">Podés revisar si alguien ya informó este problema; esto no impide enviar el tuyo.</p><ul className="mt-3 grid gap-2">{similarReports.map(report => <li key={report.id}><a className="text-sm font-semibold text-[#116D63] underline" href={`/reclamo/${report.id}`}>{report.address} · {statusLabels[report.status]} · {new Date(report.createdAt).toLocaleDateString("es-AR", { dateStyle: "medium", timeZone: "America/Argentina/Buenos_Aires" })}</a></li>)}</ul></aside>}
       </section>
 
       <section className="border-t border-[#CBDCD4] pt-8">

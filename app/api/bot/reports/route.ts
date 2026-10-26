@@ -1,11 +1,12 @@
 import { timingSafeEqual, createHash, createHmac } from "node:crypto";
 import { db } from "@reportar/db";
-import { citizenReports } from "@reportar/db/schema";
+import { citizenReports, reportEvents } from "@reportar/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { parseBotReport } from "@/lib/reports/bot-validation";
 import { ValidationError } from "@/lib/reports/validation";
 import { classifyReport, unavailableClassification } from "@/lib/reports/classification";
 import { storeTelegramPhoto } from "@/lib/reports/neon-storage";
+import { suggestedDueAt } from "@/lib/reports/sla";
 
 const MAX_BYTES = 20_000;
 export async function POST(request: Request) {
@@ -54,11 +55,13 @@ export async function POST(request: Request) {
       const [created] = await db.insert(citizenReports).values({
         ...input,
         ...unavailableClassification(input.category),
+        dueAt: suggestedDueAt(null),
         photoUploadTokenHash,
       }).onConflictDoNothing({target: citizenReports.externalId}).returning(projection);
       if (created) {
         report = created;
         status = 201;
+        await db.insert(reportEvents).values({ reportPublicId: report.id, type: "CREATED", toStatus: "RECIBIDO" });
         const classification = await classifyReport(input.description, input.category);
         await db.update(citizenReports).set(classification).where(eq(citizenReports.externalId, input.externalId));
       } else {

@@ -4,7 +4,7 @@ import { db } from "@reportar/db";
 import { citizenReports } from "@reportar/db/schema";
 import catalog from "@/lib/geography/catalog.json";
 import { resolveTerritory } from "@/lib/geography/resolve";
-import { categoryLabels, statusLabels, type Category, type ReportStatus } from "./validation";
+import { categoryLabels, statusLabels, urgencyLabels, type Category, type ReportStatus, type Urgency } from "./validation";
 import type { ExplorerData, ExplorerReport, TerritoryCount } from "./explorer-types";
 
 export async function getReportIndex(): Promise<{ reports: ExplorerReport[]; updatedAt: string }> {
@@ -12,7 +12,7 @@ export async function getReportIndex(): Promise<{ reports: ExplorerReport[]; upd
   cacheLife({ stale: 30, revalidate: 30, expire: 300 });
   // Explicit public projection: no user identifiers, storage keys, or upload tokens.
   const rows = await db.select({
-    id: citizenReports.publicId, category: citizenReports.category, status: citizenReports.status,
+    id: citizenReports.publicId, category: citizenReports.category, status: citizenReports.status, urgency: citizenReports.urgency,
     address: citizenReports.address, description: sql<string>`left(${citizenReports.description}, 220)`,
     latitude: citizenReports.latitude, longitude: citizenReports.longitude, createdAt: citizenReports.createdAt,
     hasPhoto: sql<boolean>`(${citizenReports.photoUrl} is not null or ${citizenReports.photoStorageKey} is not null)`,
@@ -29,9 +29,9 @@ export async function getReportIndex(): Promise<{ reports: ExplorerReport[]; upd
 }
 
 export function summarizeReports(index: { reports: ExplorerReport[]; updatedAt: string }, filters: {
-  province?: string; municipality?: string; category?: Category; status?: ReportStatus; page: number;
+  province?: string; municipality?: string; category?: Category; status?: ReportStatus; urgency?: Urgency; page: number;
 }): ExplorerData {
-  const matching = index.reports.filter(r => (!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status));
+  const matching = index.reports.filter(r => (!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status) && (!filters.urgency || r.urgency === filters.urgency));
   const provinceCounts = new Map<string, { count: number; resolved: number }>();
   const municipalityCounts = new Map<string, { count: number; resolved: number }>();
   for (const r of matching) {
@@ -42,13 +42,15 @@ export function summarizeReports(index: { reports: ExplorerReport[]; updatedAt: 
     }
   }
   const inScope = index.reports.filter(r => (!filters.province || r.provinceId === filters.province) && (!filters.municipality || r.municipalityId === filters.municipality));
-  const scoped = inScope.filter(r => (!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status));
+  const scoped = inScope.filter(r => (!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status) && (!filters.urgency || r.urgency === filters.urgency));
   // Facet counts omit their own filter, so switching category/state remains useful.
   const categories = Object.fromEntries(Object.keys(categoryLabels).map(k => [k, 0])) as Record<Category, number>;
   const statuses = Object.fromEntries(Object.keys(statusLabels).map(k => [k, 0])) as Record<ReportStatus, number>;
+  const urgencies = Object.fromEntries(Object.keys(urgencyLabels).map(k => [k, 0])) as Record<Urgency, number>;
   for (const r of inScope) {
-    if (!filters.status || r.status === filters.status) categories[r.category]++;
-    if (!filters.category || r.category === filters.category) statuses[r.status]++;
+    if ((!filters.status || r.status === filters.status) && (!filters.urgency || r.urgency === filters.urgency)) categories[r.category]++;
+    if ((!filters.category || r.category === filters.category) && (!filters.urgency || r.urgency === filters.urgency)) statuses[r.status]++;
+    if ((!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status) && r.urgency) urgencies[r.urgency]++;
   }
   const located = scoped.filter(r => r.latitude !== null && r.longitude !== null);
   const pages = Math.max(1, Math.ceil(scoped.length / 9));
@@ -58,7 +60,7 @@ export function summarizeReports(index: { reports: ExplorerReport[]; updatedAt: 
     total: scoped.length, located: located.length,
     unassigned: scoped.filter(r => !r.provinceId).length,
     withoutMunicipality: scoped.filter(r => !r.municipalityId).length,
-    categories, statuses,
+    categories, statuses, urgencies,
     provinces: catalog.provinces.map(p => ({ ...p, ...(provinceCounts.get(p.id) || { count: 0, resolved: 0 }) })).sort(sort),
     municipalities: catalog.municipalities.filter(m => m.provinceId === filters.province).map(m => ({ ...m, ...(municipalityCounts.get(m.id) || { count: 0, resolved: 0 }) })).sort(sort),
     reports: scoped.slice((page - 1) * 9, page * 9), markers: located.slice(0, 400), markerLimit: 400,

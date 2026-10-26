@@ -1,4 +1,4 @@
-import { doublePrecision, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { doublePrecision, index, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const userRole = pgEnum("user_role", ["CITIZEN", "MUNICIPAL_ADMIN"]);
 
@@ -70,12 +70,31 @@ export const citizenReports = pgTable("citizen_reports", {
   telegramUserId: text("telegram_user_id"),
   telegramChatId: text("telegram_chat_id"),
   telegramFileId: text("telegram_file_id"),
+  assignedArea: text("assigned_area"),
+  dueAt: timestamp("due_at", { withTimezone: true }),
   reportedAt: timestamp("reported_at", { withTimezone: true }),
   source: text("source").notNull().default("WEB"),
   status: reportStatus("status").notNull().default("RECIBIDO"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const reportEvents = pgTable("report_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reportPublicId: uuid("report_public_id").notNull().references(() => citizenReports.publicId, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  fromStatus: reportStatus("from_status"),
+  toStatus: reportStatus("to_status"),
+  publicMessage: text("public_message"),
+  actorEmail: text("actor_email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [index("report_events_public_id_created_at_idx").on(table.reportPublicId, table.createdAt)]);
+
+export const reportRateLimits = pgTable("report_rate_limits", {
+  clientHash: text("client_hash").primaryKey(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull().defaultNow(),
+  requestCount: integer("request_count").notNull().default(1),
+}, table => [index("report_rate_limits_window_started_at_idx").on(table.windowStartedAt)]);
 
 export const reverseGeocodeCache = pgTable("reverse_geocode_cache", {
   coordinateKey: text("coordinate_key").primaryKey(),

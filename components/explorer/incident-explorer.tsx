@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import provinces from "@/lib/geography/provinces.json";
 import type { ExplorerData, ExplorerReport } from "@/lib/reports/explorer-types";
-import { categoryLabels, statusLabels, type Category, type ReportStatus } from "@/lib/reports/validation";
+import { categoryLabels, statusLabels, urgencyLabels, type Category, type ReportStatus, type Urgency } from "@/lib/reports/validation";
 import { StatusPill } from "@/components/status-pill";
 import { IncidentMap } from "./incident-map";
 import { ReportPhoto } from "./report-photo";
@@ -20,6 +20,7 @@ export function IncidentExplorer() {
   const [municipality, setMunicipality] = useState("");
   const [category, setCategory] = useState<Category | "">("");
   const [status, setStatus] = useState<ReportStatus | "">("");
+  const [urgency, setUrgency] = useState<Urgency | "">("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
@@ -27,7 +28,7 @@ export function IncidentExplorer() {
   const [selected, setSelected] = useState<ExplorerReport | null>(null);
   const [nearby, setNearby] = useState<ExplorerReport[]>([]);
   const selectedIndex = nearby.findIndex(report => report.id === selected?.id);
-  const query = new URLSearchParams({ province, municipality, category, status, page: String(page) }).toString();
+  const query = new URLSearchParams({ province, municipality, category, status, urgency, page: String(page) }).toString();
   const key = `${query}&retry=${retry}`;
   const data = result?.key === key ? result.data ?? null : null;
   const error = result?.key === key ? result.error : null;
@@ -58,7 +59,8 @@ export function IncidentExplorer() {
 
   function chooseCategory(next: Category | "") { setCategory(next); setPage(1); setSelected(null); }
   function chooseStatus(next: ReportStatus | "") { setStatus(next); setPage(1); setSelected(null); }
-  function clearFilters() { chooseTerritory(""); setCategory(""); setStatus(""); }
+  function chooseUrgency(next: Urgency | "") { setUrgency(next); setPage(1); setSelected(null); }
+  function clearFilters() { chooseTerritory(""); setCategory(""); setStatus(""); setUrgency(""); }
 
   return <section id="mapa" className="site-shell explorer-section" aria-labelledby="explorer-heading">
     <div className="explorer-heading">
@@ -71,7 +73,8 @@ export function IncidentExplorer() {
         <label className="explorer-select"><span>Provincia</span><select aria-label="Provincia" value={province} onChange={event => chooseTerritory(event.target.value)}><option value="">Toda Argentina</option>{provinceOptions.map(p => <option key={p.id} value={p.id}>{shortName(p.name)}</option>)}</select></label>
         <label className="explorer-select"><span>Municipio o comuna</span><select aria-label="Municipio o comuna" value={municipality} disabled={!province || loading || !data?.municipalities.length} onChange={event => chooseTerritory(province, event.target.value)}><option value="">{!province ? "Primero elegí una provincia" : "Todos los municipios"}</option>{[...(data?.municipalities ?? [])].sort((a, b) => a.name.localeCompare(b.name, "es")).map(m => <option key={m.id} value={m.id}>{m.name} ({m.count})</option>)}</select></label>
         <label className="explorer-select explorer-status-select"><span>Estado</span><select aria-label="Estado" value={status} onChange={event => chooseStatus(event.target.value as ReportStatus | "")}><option value="">Todos los estados</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        {(province || category || status) && <button className="explorer-clear" type="button" onClick={clearFilters}>Limpiar filtros <MapIcon kind="close" size={14}/></button>}
+        <label className="explorer-select explorer-status-select"><span>Urgencia</span><select aria-label="Urgencia" value={urgency} onChange={event => chooseUrgency(event.target.value as Urgency | "")}><option value="">Todas</option>{Object.entries(urgencyLabels).map(([value, label]) => <option key={value} value={value}>{label} ({data ? number(data.urgencies[value as Urgency]) : "—"})</option>)}</select></label>
+        {(province || category || status || urgency) && <button className="explorer-clear" type="button" onClick={clearFilters}>Limpiar filtros <MapIcon kind="close" size={14}/></button>}
       </div>
       <div className="explorer-categories" aria-label="Filtrar por tipo de incidente">
         <button type="button" aria-pressed={!category} className={`category-filter ${!category ? "is-active" : ""}`} onClick={() => chooseCategory("")}>Todos los tipos<span>{data ? number(Object.values(data.categories).reduce((sum, count) => sum + count, 0)) : "—"}</span></button>
@@ -103,8 +106,8 @@ export function IncidentExplorer() {
       {data && data.located > data.markerLimit && <p className="explorer-limit-note">El mapa muestra las {number(data.markerLimit)} ubicaciones más recientes. Los conteos y el listado incluyen todos los resultados.</p>}
     </div>
 
-    <div id="incidentes" className="explorer-gallery-heading"><div><h3 className="section-title">Lo que pasa en {place}</h3><p>{data ? `${number(data.total)} ${data.total === 1 ? "reporte" : "reportes"}` : "Cargando reportes…"}{category ? ` de ${shortCategory[category].toLowerCase()}` : ""}{status ? ` · ${statusLabels[status]}` : ""}. Más recientes primero.</p></div><Link href="/reportar" className="civic-button civic-button-outline">Hacer un reporte <MapIcon kind="arrow" size={17}/></Link></div>
-    {loading ? <div className="explorer-gallery" aria-label="Cargando reportes" aria-busy="true">{[0, 1, 2].map(i => <div key={i} className="report-card-skeleton"/>)}</div> : error ? <p className="explorer-empty">El listado estará disponible cuando se restablezca la conexión. <button className="civic-link" type="button" onClick={() => setRetry(value => value + 1)}>Volver a intentar</button></p> : data?.reports.length ? <div className="explorer-gallery">{data.reports.map(report => <article className="explorer-report-card" key={report.id}><Link href={`/reclamo/${report.id}`} className="explorer-report-link"><div className="explorer-report-image"><ReportPhoto report={report}/><div className="explorer-photo-status"><StatusPill status={report.status}/></div></div><div className="explorer-report-body"><div className="explorer-report-category" style={{ color: categoryColors[report.category] }}><CategoryIcon category={report.category} size={17}/>{shortCategory[report.category]}</div><h4>{report.address}</h4><p>{report.description}</p><div className="explorer-report-bottom"><time dateTime={report.createdAt}>{new Date(report.createdAt).toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: "America/Argentina/Buenos_Aires" })}</time><span>Ver reporte <MapIcon kind="arrow" size={17}/></span></div></div></Link></article>)}</div> : <div className="explorer-empty"><MapIcon kind="pin" size={30}/><h4>No hay reportes con estos filtros.</h4><p>Probá otra zona o categoría. Si hay un problema en tu barrio, podés ser la primera persona en reportarlo.</p><button type="button" className="civic-link" onClick={() => { chooseCategory(""); chooseStatus(""); }}>Ver todos los tipos y estados</button></div>}
+    <div id="incidentes" className="explorer-gallery-heading"><div><h3 className="section-title">Lo que pasa en {place}</h3><p>{data ? `${number(data.total)} ${data.total === 1 ? "reporte" : "reportes"}` : "Cargando reportes…"}{category ? ` de ${shortCategory[category].toLowerCase()}` : ""}{status ? ` · ${statusLabels[status]}` : ""}{urgency ? ` · ${urgencyLabels[urgency]}` : ""}. Más recientes primero.</p></div><Link href="/reportar" className="civic-button civic-button-outline">Hacer un reporte <MapIcon kind="arrow" size={17}/></Link></div>
+    {loading ? <div className="explorer-gallery" aria-label="Cargando reportes" aria-busy="true">{[0, 1, 2].map(i => <div key={i} className="report-card-skeleton"/>)}</div> : error ? <p className="explorer-empty">El listado estará disponible cuando se restablezca la conexión. <button className="civic-link" type="button" onClick={() => setRetry(value => value + 1)}>Volver a intentar</button></p> : data?.reports.length ? <div className="explorer-gallery">{data.reports.map(report => <article className="explorer-report-card" key={report.id}><Link href={`/reclamo/${report.id}`} className="explorer-report-link"><div className="explorer-report-image"><ReportPhoto report={report}/><div className="explorer-photo-status"><StatusPill status={report.status}/></div></div><div className="explorer-report-body"><div className="explorer-report-category" style={{ color: categoryColors[report.category] }}><CategoryIcon category={report.category} size={17}/>{shortCategory[report.category]}</div><h4>{report.address}</h4><p>{report.description}</p><div className="explorer-report-bottom"><time dateTime={report.createdAt}>{new Date(report.createdAt).toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: "America/Argentina/Buenos_Aires" })}</time><span>Ver reporte <MapIcon kind="arrow" size={17}/></span></div></div></Link></article>)}</div> : <div className="explorer-empty"><MapIcon kind="pin" size={30}/><h4>No hay reportes con estos filtros.</h4><p>Probá otra zona o categoría. Si hay un problema en tu barrio, podés ser la primera persona en reportarlo.</p><button type="button" className="civic-link" onClick={() => { chooseCategory(""); chooseStatus(""); chooseUrgency(""); }}>Ver todos los tipos y estados</button></div>}
     {data && data.pages > 1 && <nav className="explorer-pagination" aria-label="Páginas de incidentes"><button className="civic-button civic-button-outline" type="button" disabled={data.page === 1} onClick={() => setPage(data.page - 1)}>Anterior</button><span>Página {data.page} de {data.pages}</span><button className="civic-button civic-button-outline" type="button" disabled={data.page === data.pages} onClick={() => setPage(data.page + 1)}>Siguiente</button></nav>}
   </section>;
 }

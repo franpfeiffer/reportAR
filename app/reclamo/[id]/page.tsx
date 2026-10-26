@@ -1,19 +1,17 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ReportMap } from "@/components/report-map";
+import { ReportUpdates } from "@/components/report-updates";
 import { SiteHeader } from "@/components/site-header";
-import { StatusPill } from "@/components/status-pill";
 import { categoryLabels, isUuid } from "@/lib/reports/validation";
 import { db } from "@reportar/db";
-import { citizenReports } from "@reportar/db/schema";
+import { citizenReports, reportEvents } from "@reportar/db/schema";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 type Props = { params: Promise<{ id: string }> };
 export const instant = false;
-const steps = ["RECIBIDO", "EN_REVISION", "RESUELTO"] as const;
-const stepLabels = ["Recibido", "En revisión", "Resuelto"] as const;
 
 export default async function ComplaintPage({ params }: Props) {
   const { id } = await params;
@@ -21,18 +19,18 @@ export default async function ComplaintPage({ params }: Props) {
   await connection();
   const [report] = await db.select().from(citizenReports).where(eq(citizenReports.publicId, id)).limit(1);
   if (!report) notFound();
-  const currentStep = steps.indexOf(report.status);
+  const events = await db.select({ type: reportEvents.type, fromStatus: reportEvents.fromStatus, toStatus: reportEvents.toStatus, publicMessage: reportEvents.publicMessage, createdAt: reportEvents.createdAt })
+    .from(reportEvents).where(and(eq(reportEvents.reportPublicId, id), inArray(reportEvents.type, ["CREATED", "STATUS_CHANGED", "MUNICIPAL_RESPONSE"]))).orderBy(asc(reportEvents.createdAt)).limit(100);
+  const initialEvents = events.map(event => ({ ...event, createdAt: event.createdAt.toISOString() }));
+  if (!initialEvents.some(event => event.type === "CREATED")) initialEvents.unshift({ type: "CREATED", fromStatus: null, toStatus: "RECIBIDO", publicMessage: null, createdAt: report.createdAt.toISOString() });
 
   return (
     <div className="min-h-screen">
       <SiteHeader />
       <main className="site-shell py-9 sm:py-14">
         <Link href="/" className="civic-link inline-flex items-center gap-2 text-sm"><span aria-hidden="true">←</span> Volver al inicio</Link>
-        <div className="mt-9 flex flex-wrap items-end justify-between gap-6"><div><h1 className="page-title">Así va tu reclamo.</h1><p className="body-lead mt-4">Podés volver a esta página con tu código cuando quieras.</p></div><StatusPill status={report.status} /></div>
-        <section className="surface mt-9 overflow-hidden" aria-labelledby="progress-title">
-          <div className="bg-[#14433F] px-6 py-7 text-white sm:px-9"><h2 id="progress-title" className="text-xl font-bold tracking-[-.04em]">Estado del reporte</h2><p className="mt-3 text-xs text-[#C5E0D4]">Código de seguimiento</p><code className="mt-1 block break-all font-mono text-xs text-white sm:text-sm">{report.publicId}</code></div>
-          <ol className="grid gap-0 px-6 py-7 sm:grid-cols-3 sm:px-9" aria-label="Etapas del reclamo">{stepLabels.map((label, index) => <li key={label} className={`border-t-4 py-3 pr-5 ${index <= currentStep ? "border-[#116D63]" : "border-[#CBDCD4]"}`} aria-current={index === currentStep ? "step" : undefined}><span className="font-mono text-xs text-[#5B746F]">{String(index + 1).padStart(2, "0")}</span><p className={`mt-1 text-sm font-bold ${index <= currentStep ? "text-[#173735]" : "text-[#71857E]"}`}>{label}</p></li>)}</ol>
-        </section>
+        <div className="mt-9 flex flex-wrap items-end justify-between gap-6"><div><h1 className="page-title">Así va tu reclamo.</h1><p className="body-lead mt-4">Podés volver a esta página con tu código cuando quieras.</p></div></div>
+        <ReportUpdates id={report.publicId} initialStatus={report.status} initialEvents={initialEvents} />
 
         <section className="mt-8 grid gap-7 md:grid-cols-[minmax(0,1fr)_18rem]" aria-label="Detalles del reclamo">
           <div className="surface p-6 sm:p-9"><h2 className="section-title">Lo que reportaste</h2><dl className="mt-7 grid gap-6"><div><dt className="text-sm font-semibold text-[#5B746F]">Problema</dt><dd className="mt-1 text-lg font-semibold">{categoryLabels[report.category]}</dd></div><div className="border-t border-[#CBDCD4] pt-5"><dt className="text-sm font-semibold text-[#5B746F]">Descripción</dt><dd className="mt-2 whitespace-pre-wrap leading-7">{report.description}</dd></div></dl></div>
