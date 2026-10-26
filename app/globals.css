@@ -87,13 +87,9 @@ body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var
 .theme-toggle[aria-checked="true"]::before { transform: translateX(1.13rem); }
 .theme-toggle svg { position: relative; z-index: 1; width: .82rem; height: .82rem; margin-left: .17rem; pointer-events: none; }
 .theme-toggle[aria-checked="true"] svg { margin-left: 1.3rem; }
-.theme-auto { border-radius: .4rem; padding: .28rem .45rem; color: var(--muted); font-size: .7rem; font-weight: 650; cursor: pointer; }
-.theme-auto:hover { background: var(--mist); color: var(--ink); }
 .theme-control.is-inverse .theme-toggle { border-color: #ffffff80; background: #ffffff20; color: white; }
 .theme-control.is-inverse .theme-toggle::before { background: #ffffffd9; }
 .theme-control.is-inverse .theme-toggle[aria-checked="true"] { border-color: #ffffffa0; background: #ffffff35; }
-.theme-control.is-inverse .theme-auto { color: #d4e7df; }
-.theme-control.is-inverse .theme-auto:hover { background: #ffffff20; color: white; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

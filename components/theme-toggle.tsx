@@ -23,14 +23,12 @@ function applyMode(mode: ThemeMode, systemPrefersDark = window.matchMedia("(pref
 }
 
 export function ThemeToggle({ inverse = false }: { inverse?: boolean }) {
-  const [mode, setMode] = useState<ThemeMode>("system");
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const syncFromSystem = () => {
       const preference = readPreference();
-      setMode(preference);
       setIsDark(applyMode(preference, media.matches));
     };
 
@@ -39,14 +37,12 @@ export function ThemeToggle({ inverse = false }: { inverse?: boolean }) {
     return () => media.removeEventListener("change", syncFromSystem);
   }, []);
 
-  function choose(mode: ThemeMode) {
+  function choose(mode: Exclude<ThemeMode, "system">) {
     try {
-      if (mode === "system") window.localStorage.removeItem(preferenceKey);
-      else window.localStorage.setItem(preferenceKey, mode);
+      window.localStorage.setItem(preferenceKey, mode);
     } catch {
       // Keep the control usable when browser storage is unavailable.
     }
-    setMode(mode);
     setIsDark(applyMode(mode));
   }
 
@@ -67,7 +63,6 @@ export function ThemeToggle({ inverse = false }: { inverse?: boolean }) {
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.9 13A8.5 8.5 0 0 1 11 3.1 8.6 8.6 0 1 0 20.9 13Z"/><path d="M16 3v4m-2-2h4"/></svg>
         )}
       </button>
-      {mode !== "system" && <button type="button" className="theme-auto" onClick={() => choose("system")}>Automático</button>}
     </div>
   );
 }

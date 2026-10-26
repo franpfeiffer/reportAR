@@ -12,6 +12,29 @@ type CreatedReport = { publicId: string; photoUploadToken?: string };
 type GeographyOption = { id: string; name: string };
 const MAX_PHOTO_BYTES = 100 * 1024 * 1024;
 
+async function createPhotoPreview(file: File): Promise<string | null> {
+  if (!/^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(file.type) || typeof createImageBitmap === "undefined") return null;
+  let bitmap: ImageBitmap | undefined;
+  try {
+    bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 320 / bitmap.width, 320 / bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/webp", 0.75));
+    return blob ? URL.createObjectURL(blob) : null;
+  } catch {
+    return null;
+  } finally {
+    bitmap?.close();
+  }
+}
+
 export function ReportForm() {
   const [location, setLocation] = useState<MapPoint | null>(null);
   const locationValue = useRef<MapPoint | null>(null);
@@ -35,7 +58,9 @@ export function ReportForm() {
   const [geographyError, setGeographyError] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isProcessingPhotoPreview, setIsProcessingPhotoPreview] = useState(false);
   const previewUrl = useRef<string | null>(null);
+  const previewRevision = useRef(0);
   const [photoError, setPhotoError] = useState("");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,7 +68,10 @@ export function ReportForm() {
   const [createdReport, setCreatedReport] = useState<CreatedReport | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => () => { if (previewUrl.current) URL.revokeObjectURL(previewUrl.current); }, []);
+  useEffect(() => () => {
+    previewRevision.current += 1;
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -73,11 +101,25 @@ export function ReportForm() {
   }, [provinceId]);
 
   function choosePhoto(file: File | null) {
+    const revision = ++previewRevision.current;
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
-    previewUrl.current = file && /^(image\/(jpeg|png|gif|webp|avif|bmp))$/.test(file.type) ? URL.createObjectURL(file) : null;
-    setPhotoPreview(previewUrl.current);
+    previewUrl.current = null;
+    setPhotoPreview(null);
     setPhoto(file);
     setPhotoError("");
+    setIsProcessingPhotoPreview(Boolean(file));
+    if (file) {
+      void createPhotoPreview(file).then(url => {
+        if (revision !== previewRevision.current) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        previewUrl.current = url;
+        setPhotoPreview(url);
+      }).finally(() => {
+        if (revision === previewRevision.current) setIsProcessingPhotoPreview(false);
+      });
+    }
   }
 
   function chooseLocation(point: MapPoint | null, fromAddressSearch = false) {
@@ -328,7 +370,7 @@ export function ReportForm() {
         <p className="form-help mt-2">Opcional. Podés adjuntar el archivo original de tu cámara, incluso HEIC, RAW u otros formatos. Hasta 100 MB.</p>
         <label htmlFor="photo" className="civic-button civic-button-outline mt-5 cursor-pointer">{photo ? "Cambiar foto" : "Adjuntar foto"}</label>
         <input id="photo" name="photo" type="file" className="sr-only" onChange={event => choosePhoto(event.target.files?.[0] ?? null)} />
-        {photo && <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-[#CBDCD4] bg-[#F1F5F2] p-4">{photoPreview && <Image src={photoPreview} alt="Vista previa de la foto elegida" width={80} height={80} unoptimized className="h-20 w-20 rounded-lg object-cover" />}<div className="min-w-0 flex-1"><p className="break-all text-sm font-semibold">{photo.name}</p><p className="mt-1 text-xs text-[#5B746F]">{(photo.size / 1024 / 1024).toFixed(1)} MB{!photoPreview ? " · Vista previa no disponible; se enviará el original." : ""}</p></div><button type="button" className="civic-link text-sm" onClick={() => choosePhoto(null)}>Quitar</button></div>}
+        {photo && <div className="mt-4 flex flex-wrap items-center gap-4 rounded-xl border border-[#CBDCD4] bg-[#F1F5F2] p-4">{photoPreview && <Image src={photoPreview} alt="Vista previa optimizada de la foto elegida" width={80} height={80} unoptimized className="h-20 w-20 rounded-lg object-cover" />}{isProcessingPhotoPreview && <span role="status" className="flex h-20 w-20 items-center justify-center rounded-lg bg-white px-2 text-center text-xs text-[#5B746F]">Preparando vista previa…</span>}<div className="min-w-0 flex-1"><p className="break-all text-sm font-semibold">{photo.name}</p><p className="mt-1 text-xs text-[#5B746F]">{(photo.size / 1024 / 1024).toFixed(1)} MB{isProcessingPhotoPreview ? " · Preparando miniatura…" : photoPreview ? " · Vista previa optimizada; se enviará el original." : " · Vista previa no disponible; se enviará el original."}</p></div><button type="button" className="civic-link text-sm" onClick={() => choosePhoto(null)}>Quitar</button></div>}
       </section>
 
       <div className="border-t border-[#CBDCD4] pt-7">

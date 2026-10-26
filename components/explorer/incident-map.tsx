@@ -126,8 +126,9 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
     let disposed = false;
     let resize: ResizeObserver | undefined;
     let themeObserver: MutationObserver | undefined;
-    import("maplibre-gl").then(({ Map, Marker, Popup, AttributionControl }) => {
+    import("maplibre-gl").then(({ Map, Marker, Popup, AttributionControl, setWorkerUrl }) => {
       if (disposed || !container.current) return;
+      setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url).toString());
       const dark = document.documentElement.dataset.theme === "dark";
       const instance = new Map({
         container: container.current,
