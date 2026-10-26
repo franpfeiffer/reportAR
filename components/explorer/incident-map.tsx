@@ -154,14 +154,14 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         if (!currentData) return;
 
         const territories = current.province ? currentData.municipalities : currentData.provinces;
-        const territoryGroups = clusterPoints(instance, territories.filter(item => item.count > 0), item => [item.center[1], item.center[0]], 42);
+        const territoryGroups = clusterPoints(instance, territories.filter(item => !current.municipality && item.count > 0), item => [item.center[1], item.center[0]], 42);
         for (const group of territoryGroups) {
           const total = group.items.reduce((sum, item) => sum + item.count, 0);
           const names = group.items.map(item => `${item.name}: ${item.count}`).join(" · ");
           const element = document.createElement("button");
           element.type = "button";
           element.className = "territory-map-count";
-          element.textContent = total.toLocaleString("es-AR", { notation: "compact", maximumFractionDigits: 1 });
+          element.textContent = `${group.items.length === 1 ? group.items[0].name : `${group.items.length} zonas`} · ${total.toLocaleString("es-AR")}`;
           element.title = names;
           element.setAttribute("aria-label", names);
           element.addEventListener("click", event => {
@@ -174,8 +174,8 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
           territoryMarkers.current.push(new Marker({ element, anchor: "center" }).setLngLat(group.position).addTo(instance));
         }
 
-        if (current.province) {
-          const reportGroups = clusterPoints(instance, currentData.markers.filter(report => report.latitude !== null && report.longitude !== null), report => [report.longitude!, report.latitude!], 34);
+        if (current.municipality) {
+          const reportGroups = clusterPoints(instance, currentData.markers.filter(report => report.municipalityId === current.municipality && report.latitude !== null && report.longitude !== null), report => [report.longitude!, report.latitude!], 34);
           for (const group of reportGroups) {
             const report = group.items[0];
             const multiple = group.items.length > 1;
@@ -184,7 +184,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
             element.className = multiple ? "incident-map-cluster" : "incident-map-dot";
             if (!multiple) element.style.setProperty("--incident-color", report.status === "RESUELTO" ? "#188246" : categoryColors[report.category]);
             element.textContent = multiple ? String(group.items.length) : report.status === "RESUELTO" ? "✓" : "";
-            element.title = multiple ? `${group.items.length} incidentes cercanos` : `${categoryLabels[report.category]}: ${report.address}`;
+            element.title = multiple ? `${group.items.length} reportes en este grupo. Abrir fotos y detalles` : `${categoryLabels[report.category]}: ${report.address}`;
             element.setAttribute("aria-label", element.title);
             element.addEventListener("click", event => {
               event.stopPropagation();
@@ -224,15 +224,15 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
           paint: { "line-color": "#E86F50", "line-width": 3.2 },
         });
         instance.on("mouseenter", "territory-extrusion", () => { instance.getCanvas().style.cursor = "pointer"; });
-        instance.on("mouseleave", "territory-extrusion", () => { instance.getCanvas().style.cursor = ""; popup.current?.remove(); });
+        instance.on("mouseleave", "territory-extrusion", () => { instance.getCanvas().style.cursor = ""; popup.current?.remove(); instance.setFilter("territory-hover", ["==", ["get", "mapId"], ""]); });
         instance.on("mousemove", "territory-extrusion", event => {
           const feature = event.features?.[0];
           if (!feature) return;
           instance.setFilter("territory-hover", ["==", ["get", "mapId"], String(feature.properties?.mapId ?? "")]);
           const tooltip = document.createElement("div");
           tooltip.className = "explorer-tooltip";
-          tooltip.textContent = `${String(feature.properties?.name ?? "Zona")} · ${Number(feature.properties?.count ?? 0).toLocaleString("es-AR")} incidentes`;
-          if (!popup.current) popup.current = new Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: "260px" });
+          tooltip.textContent = `${String(feature.properties?.name ?? "Zona")} · ${Number(feature.properties?.count ?? 0).toLocaleString("es-AR")} reportes en total`;
+          if (!popup.current) popup.current = new Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: "260px", className: "reportar-map-tooltip" });
           popup.current.setLngLat(event.lngLat).setDOMContent(tooltip).addTo(instance);
         });
         instance.on("click", "territory-extrusion", event => {
@@ -288,7 +288,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
 
   useEffect(() => {
     const instance = map.current;
-    if (!ready || !instance || !geography || geography.province !== province || !instance.isStyleLoaded()) return;
+    if (!ready || !instance || !geography || geography.province !== province) return;
     const territories = province ? geography.municipalities : geography.provinces;
     const counts = province ? data?.municipalities ?? [] : data?.provinces ?? [];
     const source = instance.getSource("territories") as GeoJSONSource | undefined;
@@ -297,6 +297,8 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
     const nextScope = `${province}/${municipality}`;
     if (scope.current !== nextScope) {
       scope.current = nextScope;
+      popup.current?.remove();
+      instance.setFilter("territory-hover", ["==", ["get", "mapId"], ""]);
       const target = province
         ? municipality ? geography.municipalities.features.find(feature => feature.properties.id === municipality) : geography.provinces.features.find(feature => feature.properties.id === province)
         : null;
@@ -314,9 +316,9 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       <button type="button" onClick={() => map.current?.zoomOut()} aria-label="Alejar mapa">−</button>
       <button type="button" onClick={() => { callbacks.current.onTerritory(""); map.current?.fitBounds(countryBounds, { padding: { top: 25, right: 25, bottom: 25, left: 25 }, duration: 650, maxZoom: 4.2 }); }} aria-label="Ver toda Argentina"><MapIcon kind="layers" size={18}/></button>
     </div>
-    <div className="map-hint"><span className="map-hint-dot" />{province ? "Elegí un municipio o un incidente" : "Elegí una provincia para explorar"}</div>
+    <div className="map-hint"><span className="map-hint-dot" />{municipality ? "Cada punto es un reporte; los círculos agrupan reportes cercanos" : province ? "Totales por municipio · Elegí uno para ver sus reportes" : "Totales por provincia · Elegí una para explorar"}</div>
     {!geography && !error && <div className="map-loading" role="status">Cargando mapa de Argentina…</div>}
     {error && <div className="map-message" role="alert">{error}<button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
-    <div className="map-legend"><span className="map-legend-scale"/>Menos <span aria-hidden="true">—</span> Más incidentes</div>
+    <div className="map-legend">{municipality ? <span>{Math.min(data?.located ?? 0, data?.markerLimit ?? 400)} de {data?.total ?? 0} reportes tienen ubicación</span> : <><span className="map-legend-scale"/>Menos <span aria-hidden="true">—</span> Más incidentes</>}</div>
   </div>;
 }
