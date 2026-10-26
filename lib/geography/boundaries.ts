@@ -1,0 +1,54 @@
+import type { BoundaryCollection } from "./types";
+import provinces from "../../public/geography/provinces.json";
+import municipalities02 from "../../public/geography/municipalities/02.json";
+import municipalities58 from "../../public/geography/municipalities/58.json";
+import municipalities74 from "../../public/geography/municipalities/74.json";
+import municipalities82 from "../../public/geography/municipalities/82.json";
+import municipalities46 from "../../public/geography/municipalities/46.json";
+import municipalities10 from "../../public/geography/municipalities/10.json";
+import municipalities90 from "../../public/geography/municipalities/90.json";
+import municipalities22 from "../../public/geography/municipalities/22.json";
+import municipalities34 from "../../public/geography/municipalities/34.json";
+import municipalities78 from "../../public/geography/municipalities/78.json";
+import municipalities26 from "../../public/geography/municipalities/26.json";
+import municipalities50 from "../../public/geography/municipalities/50.json";
+import municipalities30 from "../../public/geography/municipalities/30.json";
+import municipalities70 from "../../public/geography/municipalities/70.json";
+import municipalities38 from "../../public/geography/municipalities/38.json";
+import municipalities86 from "../../public/geography/municipalities/86.json";
+import municipalities62 from "../../public/geography/municipalities/62.json";
+import municipalities18 from "../../public/geography/municipalities/18.json";
+import municipalities54 from "../../public/geography/municipalities/54.json";
+import municipalities66 from "../../public/geography/municipalities/66.json";
+import municipalities14 from "../../public/geography/municipalities/14.json";
+import municipalities06 from "../../public/geography/municipalities/06.json";
+import municipalities42 from "../../public/geography/municipalities/42.json";
+import municipalities94 from "../../public/geography/municipalities/94.json";
+
+export const provinceBoundaries = provinces as BoundaryCollection;
+export const municipalityBoundaries = {
+  "02": municipalities02 as BoundaryCollection,
+  "58": municipalities58 as BoundaryCollection,
+  "74": municipalities74 as BoundaryCollection,
+  "82": municipalities82 as BoundaryCollection,
+  "46": municipalities46 as BoundaryCollection,
+  "10": municipalities10 as BoundaryCollection,
+  "90": municipalities90 as BoundaryCollection,
+  "22": municipalities22 as BoundaryCollection,
+  "34": municipalities34 as BoundaryCollection,
+  "78": municipalities78 as BoundaryCollection,
+  "26": municipalities26 as BoundaryCollection,
+  "50": municipalities50 as BoundaryCollection,
+  "30": municipalities30 as BoundaryCollection,
+  "70": municipalities70 as BoundaryCollection,
+  "38": municipalities38 as BoundaryCollection,
+  "86": municipalities86 as BoundaryCollection,
+  "62": municipalities62 as BoundaryCollection,
+  "18": municipalities18 as BoundaryCollection,
+  "54": municipalities54 as BoundaryCollection,
+  "66": municipalities66 as BoundaryCollection,
+  "14": municipalities14 as BoundaryCollection,
+  "06": municipalities06 as BoundaryCollection,
+  "42": municipalities42 as BoundaryCollection,
+  "94": municipalities94 as BoundaryCollection,
+} as Record<string, BoundaryCollection>;

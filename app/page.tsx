@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
+import { IncidentExplorer } from "@/components/explorer/incident-explorer";
 import { RouteArt } from "@/components/route-art";
 import { TrackingLookup } from "@/components/tracking-lookup";
 import { telegramBotUrl } from "@/lib/telegram";
@@ -17,11 +18,13 @@ export default function Home() {
               <a href={telegramBotUrl} target="_blank" rel="noreferrer" className="civic-button civic-button-coral">Reportar por Telegram <span aria-hidden="true">↗</span></a>
               <Link href="/reportar" className="civic-button civic-button-outline">Usar el formulario web</Link>
             </div>
-            <Link href="/reclamos" className="civic-link mt-5 inline-flex text-sm">Ver los reclamos de la comunidad →</Link>
+            <a href="#mapa" className="civic-link mt-5 inline-flex text-sm">Explorar el mapa de incidentes →</a>
             <p className="mt-5 text-sm text-[#5B746F]">No necesitás una cuenta para reportar.</p>
           </div>
           <RouteArt />
         </section>
+
+        <IncidentExplorer />
 
         <section className="border-y border-[#CBDCD4] bg-white" aria-labelledby="how-it-works">
           <div className="site-shell grid gap-8 py-12 md:grid-cols-[.8fr_1.2fr] md:gap-16 md:py-16">
