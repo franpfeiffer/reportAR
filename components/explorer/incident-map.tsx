@@ -96,7 +96,7 @@ function fillColorExpression(dark: boolean) {
   return [
     "case",
     ["boolean", ["get", "selected"], false], "#E86F50",
-    ["==", ["get", "count"], 0], dark ? "#2A3933" : "#DFE9E2",
+    ["==", ["get", "count"], 0], dark ? "#2A3933" : "#CCDCD1",
     ["interpolate", ["linear"], ["get", "intensity"], 0, dark ? "#477462" : "#A7CDB8", 1, dark ? "#A5D2B7" : "#286C60"],
   ] as never;
 }
@@ -115,6 +115,8 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
   const view = useRef({ data, province, municipality, geography: null as { provinces: BoundaryCollection; municipalities: BoundaryCollection; province: string } | null });
   const renderMarkers = useRef<() => void>(() => {});
   const [ready, setReady] = useState(false);
+  const [renderedProvince, setRenderedProvince] = useState<string | null>(null);
+  const [mapError, setMapError] = useState("");
   const [geography, setGeography] = useState<{ provinces: BoundaryCollection; municipalities: BoundaryCollection; province: string } | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -124,6 +126,11 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
 
   useEffect(() => {
     let disposed = false;
+    setReady(false);
+    setRenderedProvince(null);
+    setMapError("");
+    scope.current = "";
+    const startupTimeout = window.setTimeout(() => setMapError("El mapa tardó demasiado en iniciar. Volvé a intentar."), 20000);
     let resize: ResizeObserver | undefined;
     let themeObserver: MutationObserver | undefined;
     import("maplibre-gl").then(({ Map, Marker, Popup, AttributionControl, setWorkerUrl }) => {
@@ -135,7 +142,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         style: {
           version: 8,
           sources: {},
-          layers: [{ id: "reportar-ground", type: "background", paint: { "background-color": dark ? "#17231F" : "#EAF0EC" } }],
+          layers: [{ id: "reportar-ground", type: "background", paint: { "background-color": dark ? "#17231F" : "#F1F5F2" } }],
         },
         center: [-63.5, -38.5], zoom: 3.25, pitch: 44, bearing: -12,
         minZoom: 2.4, maxZoom: 12.5, maxPitch: 58,
@@ -199,6 +206,8 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       instance.on("zoomend", rebuildMarkers);
 
       instance.on("load", () => {
+        if (disposed) return;
+        window.clearTimeout(startupTimeout);
         instance.addSource("territories", { type: "geojson", data: emptyCollection, promoteId: "mapId" });
         instance.addLayer({
           id: "territory-extrusion", type: "fill-extrusion", source: "territories",
@@ -213,7 +222,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         instance.addLayer({
           id: "territory-outlines", type: "line", source: "territories",
           paint: {
-            "line-color": ["case", ["boolean", ["get", "selected"], false], "#E86F50", dark ? "#78988A" : "#FFFFFF"],
+            "line-color": ["case", ["boolean", ["get", "selected"], false], "#E86F50", dark ? "#78988A" : "#80988A"],
             "line-width": ["case", ["boolean", ["get", "selected"], false], 2.4, 1.2],
             "line-opacity": 0.95,
           },
@@ -250,28 +259,30 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         resize = observer;
         const themeObserverInstance = new MutationObserver(() => {
           const isDark = document.documentElement.dataset.theme === "dark";
-          instance.setPaintProperty("reportar-ground", "background-color", isDark ? "#17231F" : "#EAF0EC");
+          instance.setPaintProperty("reportar-ground", "background-color", isDark ? "#17231F" : "#F1F5F2");
           instance.setPaintProperty("territory-extrusion", "fill-extrusion-color", fillColorExpression(isDark));
-          instance.setPaintProperty("territory-outlines", "line-color", ["case", ["boolean", ["get", "selected"], false], "#E86F50", isDark ? "#78988A" : "#FFFFFF"]);
+          instance.setPaintProperty("territory-outlines", "line-color", ["case", ["boolean", ["get", "selected"], false], "#E86F50", isDark ? "#78988A" : "#80988A"]);
           renderMarkers.current();
         });
         themeObserverInstance.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
         themeObserver = themeObserverInstance;
         setReady(true);
       });
-      instance.on("error", () => setError("No pudimos abrir el mapa. Usá la lista de zonas para explorar los reportes."));
-    }).catch(() => setError("No pudimos abrir el mapa. Usá la lista de zonas para explorar los reportes."));
+      instance.on("error", () => !disposed && setMapError("No pudimos abrir el mapa. Usá la lista de zonas para explorar los reportes."));
+    }).catch(() => !disposed && setMapError("No pudimos abrir el mapa. Usá la lista de zonas para explorar los reportes."));
     return () => {
       disposed = true;
+      window.clearTimeout(startupTimeout);
       resize?.disconnect();
       themeObserver?.disconnect();
       popup.current?.remove();
+      popup.current = null;
       territoryMarkers.current.forEach(marker => marker.remove());
       reportMarkers.current.forEach(marker => marker.remove());
       map.current?.remove();
       map.current = null;
     };
-  }, []);
+  }, [retry]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -292,7 +303,34 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
     const territories = province ? geography.municipalities : geography.provinces;
     const counts = province ? data?.municipalities ?? [] : data?.provinces ?? [];
     const source = instance.getSource("territories") as GeoJSONSource | undefined;
-    source?.setData(makeTerritoryData(territories, counts, province, municipality) as GeoJSONData);
+    if (!source) return;
+    // setData must run even while the initial empty source is loading.
+    // Checking isStyleLoaded here can skip the only update that supplies the polygons.
+    let cancelled = false;
+    let applied = false;
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) setMapError("No pudimos terminar de dibujar el mapa. Volvé a intentar.");
+    }, 20000);
+    const onIdle = () => {
+      if (cancelled || !applied) return;
+      window.clearTimeout(timeout);
+      setRenderedProvince(province);
+      setMapError("");
+      instance.off("idle", onIdle);
+    };
+    instance.on("idle", onIdle);
+    void source.setData(makeTerritoryData(territories, counts, province, municipality) as GeoJSONData)
+      .then(() => {
+        if (cancelled) return;
+        applied = true;
+        instance.triggerRepaint();
+      })
+      .catch(() => {
+        if (!cancelled) {
+          window.clearTimeout(timeout);
+          setMapError("No pudimos dibujar los límites del mapa. Volvé a intentar.");
+        }
+      });
 
     const nextScope = `${province}/${municipality}`;
     if (scope.current !== nextScope) {
@@ -307,18 +345,23 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
       else instance.fitBounds(countryBounds, { padding: { top: 25, right: 25, bottom: 25, left: 25 }, duration: 650, maxZoom: 4.2 });
     }
     renderMarkers.current();
-  }, [data, geography, municipality, province, ready]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      instance.off("idle", onIdle);
+    };
+  }, [data, geography, municipality, province, ready, retry]);
 
   return <div className="incident-map-wrap">
-    <div ref={container} className="incident-map" aria-label="Mapa interactivo de incidentes de ReportAR" />
+    <div ref={container} className="incident-map" aria-busy={!ready || renderedProvince !== province} aria-label="Mapa interactivo de incidentes de ReportAR" />
     <div className="map-tools" aria-label="Controles del mapa">
       <button type="button" onClick={() => map.current?.zoomIn()} aria-label="Acercar mapa">+</button>
       <button type="button" onClick={() => map.current?.zoomOut()} aria-label="Alejar mapa">−</button>
       <button type="button" onClick={() => { callbacks.current.onTerritory(""); map.current?.fitBounds(countryBounds, { padding: { top: 25, right: 25, bottom: 25, left: 25 }, duration: 650, maxZoom: 4.2 }); }} aria-label="Ver toda Argentina"><MapIcon kind="layers" size={18}/></button>
     </div>
     <div className="map-hint"><span className="map-hint-dot" />{municipality ? "Cada punto es un reporte; los círculos agrupan reportes cercanos" : province ? "Totales por municipio · Elegí uno para ver sus reportes" : "Totales por provincia · Elegí una para explorar"}</div>
-    {!geography && !error && <div className="map-loading" role="status">Cargando mapa de Argentina…</div>}
-    {error && <div className="map-message" role="alert">{error}<button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
+    {(!ready || renderedProvince !== province) && !error && !mapError && <div className="map-loading" role="status">Cargando mapa de Argentina…</div>}
+    {(error || mapError) && <div className="map-message" role="alert">{mapError || error}<button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
     <div className="map-legend">{municipality ? <span>{Math.min(data?.located ?? 0, data?.markerLimit ?? 400)} de {data?.total ?? 0} reportes tienen ubicación</span> : <><span className="map-legend-scale"/>Menos <span aria-hidden="true">—</span> Más incidentes</>}</div>
   </div>;
 }
