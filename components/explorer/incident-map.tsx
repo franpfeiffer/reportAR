@@ -63,7 +63,6 @@ function makeTerritoryData(geography: BoundaryCollection, counts: TerritoryCount
           count,
           intensity: Math.sqrt(count / maximum),
           selected: kind === "municipality" ? id === municipality : id === province,
-          height: kind === "municipality" ? 1300 + Math.sqrt(count / maximum) * 5000 : 13000 + Math.sqrt(count / maximum) * 39000,
         },
       };
     }),
@@ -186,13 +185,13 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         window.clearTimeout(startupTimeout);
         instance.addSource("territories", { type: "geojson", data: emptyCollection, promoteId: "mapId" });
         instance.addLayer({
-          id: "territory-extrusion", type: "fill-extrusion", source: "territories",
+          id: "territory-fill", type: "fill", source: "territories",
           paint: {
-            "fill-extrusion-color": fillColorExpression(dark),
-            "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 3, ["get", "height"], 7, ["*", ["get", "height"], 0.42], 11, ["*", ["get", "height"], 0.06], 13, ["*", ["get", "height"], 0.015]],
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.96,
-            "fill-extrusion-vertical-gradient": true,
+            // Keep fills and borders on the same plane; raised polygons
+            // leave their ground-level outlines visible as duplicate edges.
+            "fill-color": fillColorExpression(dark),
+            "fill-opacity": 1,
+            "fill-antialias": false,
           },
         });
         instance.addLayer({
@@ -208,9 +207,9 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
           filter: ["==", ["get", "mapId"], ""],
           paint: { "line-color": "#E86F50", "line-width": 3.2 },
         });
-        instance.on("mouseenter", "territory-extrusion", () => { instance.getCanvas().style.cursor = "pointer"; });
-        instance.on("mouseleave", "territory-extrusion", () => { instance.getCanvas().style.cursor = ""; popup.current?.remove(); instance.setFilter("territory-hover", ["==", ["get", "mapId"], ""]); });
-        instance.on("mousemove", "territory-extrusion", event => {
+        instance.on("mouseenter", "territory-fill", () => { instance.getCanvas().style.cursor = "pointer"; });
+        instance.on("mouseleave", "territory-fill", () => { instance.getCanvas().style.cursor = ""; popup.current?.remove(); instance.setFilter("territory-hover", ["==", ["get", "mapId"], ""]); });
+        instance.on("mousemove", "territory-fill", event => {
           const feature = event.features?.[0];
           if (!feature) return;
           instance.setFilter("territory-hover", ["==", ["get", "mapId"], String(feature.properties?.mapId ?? "")]);
@@ -220,14 +219,14 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
           if (!popup.current) popup.current = new Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: "260px", className: "reportar-map-tooltip" });
           popup.current.setLngLat(event.lngLat).setDOMContent(tooltip).addTo(instance);
         });
-        instance.on("click", "territory-extrusion", event => {
+        instance.on("click", "territory-fill", event => {
           const feature = event.features?.[0];
           const id = String(feature?.properties?.id ?? "");
           if (feature?.properties?.kind === "municipality") callbacks.current.onTerritory(view.current.province, id);
           else if (id) callbacks.current.onTerritory(id);
         });
         instance.on("click", event => {
-          if (!instance.queryRenderedFeatures(event.point, { layers: ["territory-extrusion"] }).length) popup.current?.remove();
+          if (!instance.queryRenderedFeatures(event.point, { layers: ["territory-fill"] }).length) popup.current?.remove();
         });
 
         const observer = new ResizeObserver(() => instance.resize());
@@ -236,7 +235,7 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         const themeObserverInstance = new MutationObserver(() => {
           const isDark = document.documentElement.dataset.theme === "dark";
           instance.setPaintProperty("reportar-ground", "background-color", isDark ? "#17231F" : "#F1F5F2");
-          instance.setPaintProperty("territory-extrusion", "fill-extrusion-color", fillColorExpression(isDark));
+          instance.setPaintProperty("territory-fill", "fill-color", fillColorExpression(isDark));
           instance.setPaintProperty("territory-outlines", "line-color", ["case", ["boolean", ["get", "selected"], false], "#E86F50", isDark ? "#78988A" : "#80988A"]);
           renderMarkers.current();
         });
