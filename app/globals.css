@@ -193,6 +193,14 @@ body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var
 .explorer-photo-placeholder span { color: var(--muted); font-size: .65rem; }
 .explorer-photo-status { position: absolute; bottom: .75rem; left: .9rem; }.explorer-photo-status .status-pill { box-shadow: 0 1px 4px #17373514; font-size: .7rem; }
 .explorer-report-body { display: flex; flex: 1; flex-direction: column; padding: 1.15rem; }
+.report-group-badge { align-self: flex-start; margin-bottom: .7rem; border: 1px solid #b8d5c8; border-radius: 999px; background: #eaf4ee; padding: .35rem .65rem; color: #255b4d; font-size: .68rem; font-weight: 700; }
+.report-group-members { border-top: 1px solid var(--line); padding: .85rem 1.1rem 1rem; }
+.report-group-members > p { margin-bottom: .35rem; color: var(--muted); font-size: .68rem; font-weight: 700; }
+.report-group-members li + li { border-top: 1px solid var(--line); }
+.report-group-members li > a { display: flex; min-height: 2.8rem; align-items: center; justify-content: space-between; gap: .6rem; color: var(--ink); font-size: .7rem; }
+.report-group-members li > a > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-group-members li > a > span:last-child { display: flex; flex: none; align-items: center; gap: .3rem; color: var(--teal); }
+.report-group-members .status-pill { padding: .2rem .4rem; font-size: .58rem; }
 .explorer-report-category { display: flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 700; }
 .explorer-report-body h4 { margin-top: .7rem; font-size: 1rem; font-weight: 700; line-height: 1.45; letter-spacing: -.025em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .explorer-report-body > p { margin-block: .55rem 1.2rem; font-size: .8rem; line-height: 1.65; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
@@ -200,6 +208,8 @@ body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var
 .report-card-skeleton { min-height: 310px; border: 1px solid var(--line); border-radius: 1rem; background: linear-gradient(#e6eee8 55%, #fff 55%); }
 .explorer-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .8rem; padding: 3rem 1.5rem; border: 1px dashed #a8c6b7; border-radius: 1rem; background: #f8fbf8; color: var(--muted); }.explorer-empty h4 { font-size: 1.1rem; font-weight: 700; color: var(--ink); }.explorer-empty p { max-width: 32rem; font-size: .9rem; line-height: 1.7; }.explorer-empty button { cursor: pointer; }
 .explorer-pagination { display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-top: 1.5rem; font-size: .8rem; }.explorer-pagination button { min-height: 2.5rem; font-size: .8rem; cursor: pointer; }
+.reportar-map-count { border: 2px solid white; border-radius: 50%; background: #14433f; box-shadow: 0 2px 8px #17373555; color: white; }
+.reportar-map-count span { display: grid; width: 100%; height: 100%; place-items: center; font-family: var(--font-public), sans-serif; font-size: .75rem; font-weight: 800; }
 @media (max-width: 900px) {
   .explorer-workspace { grid-template-columns: 245px minmax(0, 1fr); }
   .explorer-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -278,6 +288,7 @@ html[data-theme="dark"] [class~="border-[#E8D6A6]"] { border-color: #655735 !imp
 html[data-theme="dark"] .surface,
 html[data-theme="dark"] .explorer-surface,
 html[data-theme="dark"] .explorer-report-card,
+html[data-theme="dark"] .report-group-members,
 html[data-theme="dark"] .map-tools,
 html[data-theme="dark"] .map-message,
 html[data-theme="dark"] .map-report-preview,
@@ -299,6 +310,7 @@ html[data-theme="dark"] .territory-total,
 html[data-theme="dark"] .territory-row > svg { color: var(--muted); }
 html[data-theme="dark"] .explorer-sidebar-note,
 html[data-theme="dark"] .explorer-report-bottom { border-color: var(--line); }
+html[data-theme="dark"] .report-group-badge { border-color: #3d6358; background: #263b34; color: #b3dacc; }
 html[data-theme="dark"] .incident-map-wrap,
 html[data-theme="dark"] .incident-map,
 html[data-theme="dark"] .map-frame { background: #1b2925; }

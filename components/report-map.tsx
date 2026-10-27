@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 
-export type MapPoint = { latitude: number; longitude: number; label?: string };
+export type MapPoint = { latitude: number; longitude: number; label?: string; count?: number };
 export function ReportMap({ points, onSelect }: {points: MapPoint[]; onSelect?: (point: MapPoint) => void}) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
@@ -34,7 +34,10 @@ export function ReportMap({ points, onSelect }: {points: MapPoint[]; onSelect?: 
       if (disposed || !map.current || !layers.current) return;
       layers.current.clearLayers();
       for (const point of points) {
-        const marker = L.circleMarker([point.latitude, point.longitude], {radius: 9, color: "#116d63", fillOpacity: 0.85}).addTo(layers.current);
+        const count = Math.max(1, Math.floor(point.count ?? 1));
+        const marker = count > 1
+          ? L.marker([point.latitude, point.longitude], { icon: L.divIcon({ className: "reportar-map-count", html: `<span>${count > 99 ? "99+" : count}</span>`, iconSize: [38, 38], iconAnchor: [19, 19] }) }).addTo(layers.current)
+          : L.circleMarker([point.latitude, point.longitude], {radius: 9, color: "#116d63", fillOpacity: 0.85}).addTo(layers.current);
         if (point.label) { const label = document.createElement("span"); label.textContent = point.label; marker.bindTooltip(label); }
       }
       if (points.length) map.current.fitBounds(L.latLngBounds(points.map(p => [p.latitude,p.longitude])), {maxZoom: 16, padding: [30,30]});

@@ -5,6 +5,7 @@ import { citizenReports } from "@reportar/db/schema";
 import catalog from "@/lib/geography/catalog.json";
 import { resolveTerritory } from "@/lib/geography/resolve";
 import { categoryLabels, statusLabels, urgencyLabels, type Category, type ReportStatus, type Urgency } from "./validation";
+import { groupNearbyReports } from "./grouping";
 import type { ExplorerData, ExplorerReport, TerritoryCount } from "./explorer-types";
 
 export async function getReportIndex(): Promise<{ reports: ExplorerReport[]; updatedAt: string }> {
@@ -53,8 +54,11 @@ export function summarizeReports(index: { reports: ExplorerReport[]; updatedAt: 
     if ((!filters.category || r.category === filters.category) && (!filters.status || r.status === filters.status) && r.urgency) urgencies[r.urgency]++;
   }
   const located = scoped.filter(r => r.latitude !== null && r.longitude !== null);
-  const pages = Math.max(1, Math.ceil(scoped.length / 9));
+  const allGroups = groupNearbyReports(scoped);
+  const pages = Math.max(1, Math.ceil(allGroups.length / 9));
   const page = Math.min(filters.page, pages);
+  const reportGroups = allGroups.slice((page - 1) * 9, page * 9);
+  const markers = groupNearbyReports(located.slice(0, 400));
   const sort = (a: TerritoryCount, b: TerritoryCount) => b.count - a.count || a.name.localeCompare(b.name, "es");
   return {
     total: scoped.length, located: located.length,
@@ -63,7 +67,7 @@ export function summarizeReports(index: { reports: ExplorerReport[]; updatedAt: 
     categories, statuses, urgencies,
     provinces: catalog.provinces.map(p => ({ ...p, ...(provinceCounts.get(p.id) || { count: 0, resolved: 0 }) })).sort(sort),
     municipalities: catalog.municipalities.filter(m => m.provinceId === filters.province).map(m => ({ ...m, ...(municipalityCounts.get(m.id) || { count: 0, resolved: 0 }) })).sort(sort),
-    reports: scoped.slice((page - 1) * 9, page * 9), markers: located.slice(0, 400), markerLimit: 400,
+    reports: reportGroups.flatMap(group => group.items), reportGroups, markers, markerLimit: 400,
     page, pages, updatedAt: index.updatedAt,
   };
 }

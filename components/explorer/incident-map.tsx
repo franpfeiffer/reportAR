@@ -69,28 +69,6 @@ function makeTerritoryData(geography: BoundaryCollection, counts: TerritoryCount
   };
 }
 
-function clusterPoints<T>(map: MapLibreMap, items: T[], position: (item: T) => [number, number], radius: number) {
-  const clusters: { x: number; y: number; items: T[] }[] = [];
-  const { clientWidth, clientHeight } = map.getCanvas();
-  for (const item of items) {
-    const [longitude, latitude] = position(item);
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) continue;
-    const point = map.project([longitude, latitude]);
-    if (point.x < -radius || point.y < -radius || point.x > clientWidth + radius || point.y > clientHeight + radius) continue;
-    const existing = clusters.find(cluster => Math.hypot(cluster.x - point.x, cluster.y - point.y) < radius);
-    if (existing) {
-      const length = existing.items.length;
-      existing.x = (existing.x * length + point.x) / (length + 1);
-      existing.y = (existing.y * length + point.y) / (length + 1);
-      existing.items.push(item);
-    } else clusters.push({ x: point.x, y: point.y, items: [item] });
-  }
-  return clusters.map(cluster => ({
-    items: cluster.items,
-    position: map.unproject([cluster.x, cluster.y]).toArray() as [number, number],
-  }));
-}
-
 function fillColorExpression(dark: boolean) {
   return [
     "case",
@@ -157,22 +135,22 @@ export function IncidentMap({ data, province, municipality, onTerritory, onRepor
         if (!currentData) return;
 
         if (current.municipality) {
-          const reportGroups = clusterPoints(instance, currentData.markers.filter(report => report.municipalityId === current.municipality && report.latitude !== null && report.longitude !== null), report => [report.longitude!, report.latitude!], 34);
+          const reportGroups = currentData.markers.filter(group => group.items.some(report => report.municipalityId === current.municipality));
           for (const group of reportGroups) {
             const report = group.items[0];
-            const multiple = group.items.length > 1;
+            const multiple = group.count > 1;
             const element = document.createElement("button");
             element.type = "button";
             element.className = multiple ? "incident-map-cluster" : "incident-map-dot";
             if (!multiple) element.style.setProperty("--incident-color", report.status === "RESUELTO" ? "#188246" : categoryColors[report.category]);
-            element.textContent = multiple ? String(group.items.length) : report.status === "RESUELTO" ? "✓" : "";
-            element.title = multiple ? `${group.items.length} reportes en este grupo. Abrir fotos y detalles` : `${categoryLabels[report.category]}: ${report.address}`;
+            element.textContent = multiple ? String(group.count) : report.status === "RESUELTO" ? "✓" : "";
+            element.title = multiple ? `${group.count} reportes en un radio de 50 m. Abrir fotos y detalles` : `${categoryLabels[report.category]}: ${report.address}`;
             element.setAttribute("aria-label", element.title);
             element.addEventListener("click", event => {
               event.stopPropagation();
-              callbacks.current.onReport(report, group.items);
+              callbacks.current.onReport(report, group.items.filter(item => item.municipalityId === current.municipality));
             });
-            reportMarkers.current.push(new Marker({ element, anchor: "center" }).setLngLat(group.position).addTo(instance));
+            reportMarkers.current.push(new Marker({ element, anchor: "center" }).setLngLat([group.longitude!, group.latitude!]).addTo(instance));
           }
         }
       };
