@@ -1,40 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReportAR · Panel municipal
 
-## Getting Started
+This Next.js app is the **admin panel** for ReportAR. Citizens report through the native iOS/Android apps and the Telegram bot. The backend (reports, photos, geography, bots, classification) is the Go API in [`reportAR-server`](../reportAR-server); its contract is in that repo's `API.md`.
 
-First, run the development server:
+## How it works
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Login uses Neon Auth (Google OAuth) through `app/api/auth/[...path]`. `proxy.ts` redirects signed-out users from `/admin` to `/admin/login`, and `/` redirects to `/admin`.
+- Server Components and Server Actions call the Go API (`lib/api.ts`) with `Authorization: Bearer <Neon Auth JWT>`. The JWT is minted on the server from the session cookie (`auth.token()`), so it never reaches the browser.
+- The CSV export goes through the `/admin/export` route handler, which proxies `GET /api/admin/reports/export` for the same reason.
+- Admin access is decided by the Go API (`ADMIN_EMAILS`, verified email). A `403` sends the user back to the login page with an access-denied message.
+
+## Run locally
+
+```sh
+pnpm install
+cp .env.example .env   # NEON_AUTH_BASE_URL, NEON_AUTH_COOKIE_SECRET (32+ chars), REPORTAR_API_URL
+pnpm dev               # http://localhost:3000
+pnpm lint && pnpm build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`REPORTAR_API_URL` is the Go API origin (for example `http://localhost:8080`). The Go API must use the same `NEON_AUTH_BASE_URL` so it can verify the JWT.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Clasificación municipal con JEV
-
-Los reportes web y de Telegram se evalúan en el servidor con TypeSafe/JEV para estimar la urgencia de reparación, sin cambiar la categoría elegida por la persona. Configurá `TYPESAFE_API_KEY` como variable privada del servidor en Vercel. El clasificador recibe solo la descripción y la categoría declarada; excluye dirección, fotos e identificadores. Una probabilidad de urgencia de 0,70 o mayor marca el caso como **Urgente**; una probabilidad de 0,30 o menor lo marca como **No urgente**. Los valores intermedios o la falta de respuesta quedan en **Urgencia pendiente** para revisión municipal.
+The Telegram bot (n8n workflows) lives in `integrations/telegram-bot`. Run its tests with `npm test` from that folder.

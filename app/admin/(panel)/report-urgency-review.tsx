@@ -1,9 +1,8 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { urgencyLabels, type Urgency } from "@/lib/reports/validation";
-import type { UrgencyClassificationStatus } from "@reportar/db/schema";
+import { urgencyLabels, type Urgency, type UrgencyClassificationStatus } from "@/lib/labels";
+import { updateReport } from "./actions";
 
 export function ReportUrgencyReview({
   id,
@@ -20,7 +19,6 @@ export function ReportUrgencyReview({
   const [value, setValue] = useState<Urgency | "">(suggestedUrgency ?? urgency ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const router = useRouter();
   if (!needsReview) return null;
 
   async function save() {
@@ -28,18 +26,8 @@ export function ReportUrgencyReview({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/admin/reports/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urgency: value }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setMessage(data.error || "No pudimos guardar la urgencia.");
-        return;
-      }
-      setMessage("Urgencia revisada.");
-      router.refresh();
+      const { error } = await updateReport(id, { urgency: value });
+      setMessage(error || "Urgencia revisada.");
     } catch {
       setMessage("Revisá tu conexión e intentá nuevamente.");
     } finally {

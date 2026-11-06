@@ -4,17 +4,10 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./client": "./src/client.ts",
-    "./db": "./src/db.ts",
-    "./schema": "./src/schema.ts"
+    "./client": "./src/client.ts"
   },
   "peerDependencies": {
     "@neondatabase/auth": "0.6.0-beta",
-    "@neondatabase/serverless": "1.2.0",
-    "drizzle-orm": "0.45.4",
     "next": "16.4.3"
-  },
-  "dependencies": {
-    "@reportar/db": "workspace:*"
   }
 }

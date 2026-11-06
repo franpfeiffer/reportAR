@@ -1,21 +1,18 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { statusLabels, type ReportStatus } from "@/lib/reports/validation";
+import { statusLabels, type ReportStatus } from "@/lib/labels";
+import { updateReport } from "./actions";
 
 export function ReportStatusControl({ id, status }: { id: string; status: ReportStatus }) {
   const [value, setValue] = useState<ReportStatus>(status);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const router = useRouter();
   async function save() {
     setBusy(true); setMessage("");
     try {
-      const response = await fetch(`/api/admin/reports/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: value }) });
-      const data = await response.json();
-      if (!response.ok) { setMessage(data.error || "No pudimos guardar el cambio."); return; }
-      setMessage("Estado actualizado."); router.refresh();
+      const { error } = await updateReport(id, { status: value });
+      setMessage(error || "Estado actualizado.");
     } catch { setMessage("Revisá tu conexión e intentá nuevamente."); }
     finally { setBusy(false); }
   }

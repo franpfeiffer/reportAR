@@ -1,6 +1,6 @@
 # Bot municipal · MVP n8n
 
-La variante actual con formulario para Argentina y fotos en el mismo Vercel Blob de la web está en [n8n/reportes-formulario-demo.json](n8n/reportes-formulario-demo.json). Ver [configuración y cambios de backend requeridos](n8n/FORMULARIO-DEMO.md). Se entrega inactiva; los flujos de plantilla de abajo se conservan como variantes anteriores.
+La variante actual con formulario para Argentina y fotos (subida firmada a R2 vía la API Go) está en [n8n/reportes-formulario-demo.json](n8n/reportes-formulario-demo.json). Ver [configuración y cambios de backend requeridos](n8n/FORMULARIO-DEMO.md). Se entrega inactiva; los flujos de plantilla de abajo se conservan como variantes anteriores.
 
 ## Levantar n8n local con Docker (Ubuntu)
 
@@ -51,7 +51,7 @@ El workflow de persistencia confirma el número solo después de recibir `status
 
 ## Endpoint de reportAR
 
-El nodo **Guardar reporte** envía el reporte a `POST /api/bot/reports` con Bearer e idempotencia. Su entrada contiene `report`, el JSON que se envía a reportAR. reportAR descarga la foto de Telegram y la guarda en el bucket privado Neon; la página de seguimiento la entrega a través de una ruta del servidor.
+El nodo **Guardar reporte** envía el reporte a `POST /api/bot/reports` con Bearer e idempotencia. Su entrada contiene `report`, el JSON que se envía a reportAR. La API Go (`reportAR-server`) descarga la foto de Telegram y la guarda en R2; `GET /api/reports/{id}/photo` la entrega.
 
 `src/mock-api.js` es un servidor local opcional con persistencia en archivo para una siguiente prueba de integración; el workflow entregado no lo llama. Ejecutarlo con `REPORTS_API_TOKEN` definido mediante `npm start`. Escucha únicamente en localhost. No es un backend de producción.
 
@@ -73,14 +73,14 @@ Referencias: [Telegram en n8n](https://docs.n8n.io/integrations/builtin/app-node
 
 El workflow listo para conectar es `n8n/reportes-municipales.json` (generado por `npm run build:workflow`). El archivo histórico `reportes-municipales-mock.json` es solo demostrativo y no debe activarse para persistencia.
 
-1. Desplegar reportAR en Vercel con DATABASE_URL y REPORTS_API_TOKEN configurados del lado servidor. El token generado está en el `.env` ignorado de la app; no pegarlo en el JSON del workflow ni en Git.
-2. Importar el workflow nuevo en n8n. En Variables, definir `REPORTAR_BASE_URL` con el origen HTTPS público confirmado del proyecto Vercel, sin ruta ni barra final. El nodo añade `/api/bot/reports`. El workflow queda inactivo hasta confirmar el despliegue y el dominio.
+1. Desplegar `reportAR-server` con DATABASE_URL, REPORTS_API_TOKEN y TELEGRAM_BOT_TOKEN configurados. No pegar el token en el JSON del workflow ni en Git.
+2. Importar el workflow nuevo en n8n. En Variables, definir `REPORTAR_BASE_URL` con el origen HTTPS público de la API Go, sin ruta ni barra final. El nodo añade `/api/bot/reports`. El workflow queda inactivo hasta confirmar el despliegue y el dominio.
 3. Crear una credencial Header Auth: nombre `Authorization`, valor `Bearer <REPORTS_API_TOKEN>`. Seleccionarla en Guardar reporte. Configurar la misma credencial Telegram en todos los nodos Telegram.
 4. Desactivar el workflow anterior y activar el nuevo únicamente con URL y credenciales reales. Telegram admite un único webhook por bot.
-5. Enviar un reclamo de prueba y comprobar su ID en `/reclamo/<id>` y en administración. Reejecutar el mismo payload debe devolver el mismo ID. Un mensaje nuevo de Telegram tiene otro external_id y crea otro reclamo.
+5. Enviar un reclamo de prueba y comprobar su ID con `GET /api/reports/<id>` y en el panel de administración. Reejecutar el mismo payload debe devolver el mismo ID. Un mensaje nuevo de Telegram tiene otro external_id y crea otro reclamo.
 
-El workflow reintenta hasta tres veces guardar la foto, siempre con la misma clave de idempotencia. El reporte se conserva aunque Telegram o Neon no permitan adjuntar la imagen; en ese caso el bot confirma el número e informa que la foto quedó pendiente. La ayuda y los mensajes incompletos no se persisten. No se confirma envío al municipio.
+El workflow reintenta hasta tres veces guardar la foto, siempre con la misma clave de idempotencia. El reporte se conserva aunque Telegram o R2 no permitan adjuntar la imagen; en ese caso el bot confirma el número e informa que la foto quedó pendiente. La ayuda y los mensajes incompletos no se persisten. No se confirma envío al municipio.
 
 El bot usa POST `/api/bot/reports`, Authorization Bearer y el header Idempotency-Key igual a `report.external_id`. El endpoint local `src/mock-api.js` sigue siendo una herramienta de desarrollo y no es el endpoint publicado. No activar el workflow generado sin completar la configuración.
 
-La app estima la urgencia de reparación de los reportes web y de Telegram con TypeSafe/JEV en el servidor; no cambia la categoría elegida por quien reporta. El clasificador recibe la descripción y la categoría declarada, sin dirección, fotos ni identificadores. Si la probabilidad de urgencia es mayor que 0,30 y menor que 0,70, o el servicio no responde, el reporte queda para revisión municipal.
+La API estima la urgencia de reparación de los reportes web y de Telegram con TypeSafe/JEV en el servidor; no cambia la categoría elegida por quien reporta. El clasificador recibe la descripción y la categoría declarada, sin dirección, fotos ni identificadores. Si la probabilidad de urgencia es mayor que 0,30 y menor que 0,70, o el servicio no responde, el reporte queda para revisión municipal.

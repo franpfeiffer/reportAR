@@ -21,8 +21,7 @@
     "paths": {
       "@/*": ["./*"],
       "@reportar/auth": ["./packages/auth/src/index.ts"],
-      "@reportar/auth/client": ["./packages/auth/src/client.ts"],
-      "@reportar/auth/db": ["./packages/auth/src/db.ts"]
+      "@reportar/auth/client": ["./packages/auth/src/client.ts"]
     }
   },
   "include": [

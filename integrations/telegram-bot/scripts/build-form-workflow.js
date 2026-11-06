@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { prepareForm, prepareProvinces, parseFormResponse, validateLocality, validateFormPhoto, prepareBlobUpload, prepareBlobToken, prepareBlobAttachment, formatFormResult, prepareFormResults } = require('../src/form-report');
+const { prepareForm, prepareProvinces, parseFormResponse, validateLocality, validateFormPhoto, preparePhotoUpload, preparePhotoPut, preparePhotoAttachment, formatFormResult, prepareFormResults } = require('../src/form-report');
+// Origin of the ReportAR Go API (reportAR-server). Override when regenerating the export.
+const API_URL = process.env.REPORTAR_API_URL || 'https://api.149.34.226.13.sslip.io';
 const node = (id, name, type, position, parameters, extra = {}) => ({
   id, name, type: 'n8n-nodes-base.' + type,
   typeVersion: type === 'telegram' || type === 'telegramTrigger' ? 1.2 : type === 'httpRequest' ? 4.2 : type === 'if' ? 2.2 : type === 'stickyNote' ? 1 : 2,
@@ -14,7 +16,7 @@ const condition = value => ({ conditions: {
 const httpOptions = { timeout: 60000, response: { response: { fullResponse: true, responseFormat: 'json' } } };
 const retry = { onError: 'continueErrorOutput', retryOnFail: true, maxTries: 3, waitBetweenTries: 1000 };
 const persist = () => ({
-  method: 'POST', url: 'https://reportar-one.vercel.app/api/bot/reports',
+  method: 'POST', url: `${API_URL}/api/bot/reports`,
   authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendHeaders: true,
   headerParameters: { parameters: [{ name: 'Idempotency-Key', value: '={{ $("Revisar foto").first().json.report.external_id }}' }] },
   sendBody: true, specifyBody: 'json',
@@ -29,7 +31,7 @@ const workflow = {
     node('open', '¿Abrir formulario?', 'if', [440, 0], condition('={{ $json.action === "form" }}')),
     node('reply-check', '¿Responder mensaje?', 'if', [660, 480], condition('={{ $json.action === "reply" }}')),
     node('provinces-http', 'Cargar provincias de reportAR', 'httpRequest', [660, -120], {
-      url: 'https://reportar-one.vercel.app/api/geography/provinces', options: httpOptions,
+      url: `${API_URL}/api/geography/provinces`, options: httpOptions,
     }, retry),
     node('provinces', 'Preparar provincias', 'code', [880, -120], {
       jsCode: `${prepareProvinces.toString()}\nreturn $input.all().map((item, i) => ({ json: prepareProvinces(item.json, $("Preparar formulario").first().json), pairedItem: { item: i } }));`,
@@ -52,7 +54,7 @@ const workflow = {
     }),
     node('valid', '¿Datos válidos?', 'if', [1760, -240], condition('={{ $json.action === "validate_location" }}')),
     node('localities-http', 'Cargar localidades de reportAR', 'httpRequest', [1980, -360], {
-      url: 'https://reportar-one.vercel.app/api/geography/localities',
+      url: `${API_URL}/api/geography/localities`,
       sendQuery: true, queryParameters: { parameters: [{ name: 'province', value: '={{ $json.location.province_id }}' }] },
       options: httpOptions,
     }, retry),
@@ -61,41 +63,35 @@ const workflow = {
     }),
     node('location-valid', '¿Localidad válida?', 'if', [2420, -360], condition('={{ $json.action === "create" }}')),
     node('photo-validate', 'Revisar foto', 'code', [2640, -480], {
-      jsCode: `${validateFormPhoto.toString()}\nreturn await Promise.all($input.all().map(async (item, i) => {\n  const key = item.json.form_photo_key;\n  if (!key) return { ...item, pairedItem: { item: i } };\n  try {\n    const bytes = await this.helpers.getBinaryDataBuffer(i, key);\n    const check = validateFormPhoto(bytes, item.binary[key]);\n    if (!check.ok) return { json: { ...item.json, action: "reply", reply: check.error + " No enviamos el reclamo. Escribí /reportar y completá otro formulario." }, pairedItem: { item: i } };\n    return { json: item.json, binary: { ...item.binary, [key]: { ...item.binary[key], mimeType: check.mimeType } }, pairedItem: { item: i } };\n  } catch { return { json: { ...item.json, action: "reply", error_stage: "form_binary", reply: "No pudimos leer la foto. El reclamo no se envió. Probá de nuevo con /reportar." }, pairedItem: { item: i } }; }\n}));`,
+      jsCode: `${validateFormPhoto.toString()}\nreturn await Promise.all($input.all().map(async (item, i) => {\n  const key = item.json.form_photo_key;\n  if (!key) return { ...item, pairedItem: { item: i } };\n  try {\n    const bytes = await this.helpers.getBinaryDataBuffer(i, key);\n    const check = validateFormPhoto(bytes, item.binary[key]);\n    if (!check.ok) return { json: { ...item.json, action: "reply", reply: check.error + " No enviamos el reclamo. Escribí /reportar y completá otro formulario." }, pairedItem: { item: i } };\n    return { json: { ...item.json, form_photo_size: bytes.length }, binary: { ...item.binary, [key]: { ...item.binary[key], mimeType: check.mimeType } }, pairedItem: { item: i } };\n  } catch { return { json: { ...item.json, action: "reply", error_stage: "form_binary", reply: "No pudimos leer la foto. El reclamo no se envió. Probá de nuevo con /reportar." }, pairedItem: { item: i } }; }\n}));`,
     }),
     node('photo-valid', '¿Foto válida?', 'if', [2860, -480], condition('={{ $json.action === "create" }}')),
     node('persist', 'Guardar reporte', 'httpRequest', [3080, -600], persist(), retry),
-    node('photo-plan', 'Preparar carga Blob', 'code', [3300, -600], {
-      jsCode: `${prepareBlobUpload.toString()}\nconst original = $("Revisar foto").first();\nreturn $input.all().map((item, i) => ({ json: prepareBlobUpload(item.json, original.json, original.binary?.[original.json.form_photo_key]), pairedItem: { item: i } }));`,
+    node('photo-plan', 'Preparar subida', 'code', [3300, -600], {
+      jsCode: `${preparePhotoUpload.toString()}\nconst original = $("Revisar foto").first();\nreturn $input.all().map((item, i) => ({ json: preparePhotoUpload(item.json, original.json, original.binary?.[original.json.form_photo_key]), pairedItem: { item: i } }));`,
     }),
     node('photo-needed', '¿Adjuntar foto?', 'if', [3520, -600], condition('={{ $json.action === "upload" }}')),
-    node('photo-authorize', 'Autorizar foto como la web', 'httpRequest', [3740, -720], {
-      method: 'POST', url: 'https://reportar-one.vercel.app/api/reports/photo-upload',
-      sendBody: true, specifyBody: 'json', jsonBody: '={{ $json.token_request }}', options: httpOptions,
+    node('photo-authorize', 'Pedir URL firmada', 'httpRequest', [3740, -720], {
+      method: 'POST', url: `${API_URL}/api/reports/photo-upload`,
+      sendBody: true, specifyBody: 'json', jsonBody: '={{ $json.upload_request }}', options: httpOptions,
     }, retry),
-    node('photo-binary', 'Preparar binario Blob', 'code', [3960, -720], {
-      jsCode: `${prepareBlobToken.toString()}\nconst upload = $("Preparar carga Blob").first().json;\nconst original = $("Revisar foto").first();\nreturn $input.all().map((item, i) => ({ json: prepareBlobToken(item.json, upload), binary: original.binary, pairedItem: { item: i } }));`,
+    node('photo-binary', 'Preparar PUT', 'code', [3960, -720], {
+      jsCode: `${preparePhotoPut.toString()}\nconst upload = $("Preparar subida").first().json;\nconst original = $("Revisar foto").first();\nreturn $input.all().map((item, i) => ({ json: preparePhotoPut(item.json, upload), binary: original.binary, pairedItem: { item: i } }));`,
     }),
     node('token-ready', '¿Foto autorizada?', 'if', [4180, -720], condition('={{ $json.action === "upload" }}')),
-    node('photo-put', 'Subir al Blob de la web', 'httpRequest', [4400, -840], {
-      method: 'PUT', url: 'https://vercel.com/api/blob/', sendQuery: true,
-      queryParameters: { parameters: [{ name: 'pathname', value: '={{ $json.pathname }}' }] },
-      sendHeaders: true, headerParameters: { parameters: [
-        { name: 'Authorization', value: '={{ "Bearer " + $json.clientToken }}' },
-        { name: 'x-api-version', value: '13' },
-        { name: 'x-vercel-blob-store-id', value: '={{ $json.store_id }}' },
-        { name: 'x-vercel-blob-access', value: 'public' },
-        { name: 'x-content-type', value: '={{ $json.content_type }}' },
-      ] },
+    // The presigned PUT signs Content-Type, Cache-Control and Content-Length: send exactly the returned headers and the raw bytes.
+    node('photo-put', 'Subir foto a R2', 'httpRequest', [4400, -840], {
+      method: 'PUT', url: '={{ $json.url }}',
+      sendHeaders: true, specifyHeaders: 'json', jsonHeaders: '={{ JSON.stringify($json.headers) }}',
       sendBody: true, contentType: 'binaryData', inputDataFieldName: '={{ $json.form_photo_key }}',
-      options: { ...httpOptions, timeout: 180000 },
+      options: { timeout: 180000, response: { response: { fullResponse: true, responseFormat: 'text' } } },
     }, retry),
     node('attach-prepare', 'Preparar adjunto', 'code', [4620, -840], {
-      jsCode: `${prepareBlobAttachment.toString()}\nconst upload = $("Preparar binario Blob").first().json;\nreturn $input.all().map((item, i) => ({ json: prepareBlobAttachment(item.json, upload), pairedItem: { item: i } }));`,
+      jsCode: `${preparePhotoAttachment.toString()}\nconst upload = $("Preparar PUT").first().json;\nreturn $input.all().map((item, i) => ({ json: preparePhotoAttachment(item.json, upload), pairedItem: { item: i } }));`,
     }),
-    node('blob-ready', '¿Archivo subido?', 'if', [4840, -840], condition('={{ $json.action === "attach" }}')),
+    node('upload-ready', '¿Archivo subido?', 'if', [4840, -840], condition('={{ $json.action === "attach" }}')),
     node('photo-attach', 'Vincular foto al reclamo', 'httpRequest', [5060, -960], {
-      method: 'POST', url: '={{ "https://reportar-one.vercel.app/api/reports/" + $json.report_id + "/photo/attach" }}',
+      method: 'POST', url: `={{ "${API_URL}/api/reports/" + $json.report_id + "/photo/attach" }}`,
       sendBody: true, specifyBody: 'json', jsonBody: '={{ $json.attachment }}', options: httpOptions,
     }, retry),
     node('attached-check', '¿Adjunto confirmado?', 'if', [5280, -960], condition('={{ $json.statusCode === 200 && $json.body?.ok === true }}')),
@@ -110,7 +106,7 @@ const workflow = {
     }),
     node('note', 'Configuración de la demo', 'stickyNote', [0, -700], {
       width: 740, height: 560,
-      content: '## reportAR · Formulario + fotos como la web\nINACTIVO. Requiere desplegar el contrato expectsPhoto del endpoint del bot antes de activar.\n\nCredencial Telegram: Telegram Trigger, Formulario de reclamo y Responder por Telegram. Header Auth: Name Authorization; Value Bearer <REPORTS_API_TOKEN>, en Guardar reporte y Reconsultar mismo reclamo. No poner secretos en este JSON.\n\nURL de reportAR: https://reportar-one.vercel.app. n8n necesita su propia WEBHOOK_URL pública HTTPS. El formulario individual vence a los 30 minutos. Desactivar el workflow anterior antes de activar este.\n\nHola → formulario nativo: tipo, descripción, provincia, localidad, calle y altura, foto opcional hasta 100 MiB. Las opciones de provincia se resuelven como JSON; la localidad se valida contra el catálogo de la app.\n\nFoto: crear reclamo con expectsPhoto → autorización /api/reports/photo-upload → PUT directo a Vercel Blob → /api/reports/{id}/photo/attach. Mismo store y rutas que la web; BLOB_READ_WRITE_TOKEN queda solo en Vercel. No usa sendPhoto, getFile ni AWS para esta carga.\n\nCada HTTP admite hasta 3 intentos. external_id, Idempotency-Key y pathname permanecen iguales. Si falla el adjunto se reconsulta el mismo reclamo para reconocer una carga ya completada. Se conserva el ID y se informa el fallo de foto.\n\nLas ejecuciones guardan el archivo y autorizaciones temporales para reintentar. Restringir acceso y retención en n8n; usar datos ficticios en la demo. No se confirma derivación a organismos.',
+      content: '## reportAR · Formulario + fotos\nINACTIVO hasta desplegar reportAR-server.\n\nCredencial Telegram: Telegram Trigger, Formulario de reclamo y Responder por Telegram. Header Auth: Name Authorization; Value Bearer <REPORTS_API_TOKEN>, en Guardar reporte y Reconsultar mismo reclamo. No poner secretos en este JSON.\n\nAPI de reportAR: ' + API_URL + '. n8n necesita su propia WEBHOOK_URL pública HTTPS. El formulario individual vence a los 30 minutos. Desactivar el workflow anterior antes de activar este.\n\nHola → formulario nativo: tipo, descripción, provincia, localidad, calle y altura, foto opcional hasta 100 MiB. Las opciones de provincia se resuelven como JSON; la localidad se valida contra el catálogo de la API.\n\nFoto: crear reclamo con expectsPhoto → /api/reports/photo-upload devuelve {key,url,method,headers} → PUT del archivo a la URL firmada de R2 con exactamente esos headers → /api/reports/{id}/photo/attach con {token,key}. Las credenciales de R2 quedan solo en el servidor.\n\nCada HTTP admite hasta 3 intentos. external_id e Idempotency-Key permanecen iguales. Si falla el adjunto se reconsulta el mismo reclamo para reconocer una carga ya completada. Se conserva el ID y se informa el fallo de foto.\n\nLas ejecuciones guardan el archivo y URLs firmadas temporales para reintentar. Restringir acceso y retención en n8n; usar datos ficticios en la demo. No se confirma derivación a organismos.',
     }),
   ],
   connections: {}, settings: { executionOrder: 'v1', saveDataSuccessExecution: 'all', saveDataErrorExecution: 'all', saveManualExecutions: true }, pinData: {}, tags: [],
@@ -132,13 +128,13 @@ connect('Validar localidad', ['¿Localidad válida?']);
 connect('¿Localidad válida?', ['Revisar foto'], ['Responder por Telegram']);
 connect('Revisar foto', ['¿Foto válida?']);
 connect('¿Foto válida?', ['Guardar reporte'], ['Responder por Telegram']);
-connect('Guardar reporte', ['Preparar carga Blob'], ['Preparar resultado']);
-connect('Preparar carga Blob', ['¿Adjuntar foto?']);
-connect('¿Adjuntar foto?', ['Autorizar foto como la web'], ['Preparar resultado']);
-connect('Autorizar foto como la web', ['Preparar binario Blob'], ['Preparar binario Blob']);
-connect('Preparar binario Blob', ['¿Foto autorizada?']);
-connect('¿Foto autorizada?', ['Subir al Blob de la web'], ['Reconsultar mismo reclamo']);
-connect('Subir al Blob de la web', ['Preparar adjunto'], ['Preparar adjunto']);
+connect('Guardar reporte', ['Preparar subida'], ['Preparar resultado']);
+connect('Preparar subida', ['¿Adjuntar foto?']);
+connect('¿Adjuntar foto?', ['Pedir URL firmada'], ['Preparar resultado']);
+connect('Pedir URL firmada', ['Preparar PUT'], ['Preparar PUT']);
+connect('Preparar PUT', ['¿Foto autorizada?']);
+connect('¿Foto autorizada?', ['Subir foto a R2'], ['Reconsultar mismo reclamo']);
+connect('Subir foto a R2', ['Preparar adjunto'], ['Preparar adjunto']);
 connect('Preparar adjunto', ['¿Archivo subido?']);
 connect('¿Archivo subido?', ['Vincular foto al reclamo'], ['Reconsultar mismo reclamo']);
 connect('Vincular foto al reclamo', ['¿Adjunto confirmado?'], ['Reconsultar mismo reclamo']);

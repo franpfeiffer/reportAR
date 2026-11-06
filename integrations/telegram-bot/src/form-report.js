@@ -102,7 +102,7 @@ function validateFormPhoto(bytes, metadata) {
   return { ok: true, mimeType: metadata.mimeType || 'application/octet-stream' };
 }
 
-function prepareBlobUpload(response, original, metadata = {}) {
+function preparePhotoUpload(response, original, metadata = {}) {
   const body = response.body;
   const received = [200, 201].includes(response.statusCode) && body?.status === 'received'
     && typeof body.id === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(body.id);
@@ -110,37 +110,30 @@ function prepareBlobUpload(response, original, metadata = {}) {
   if (body.photo_status !== 'pending' || !/^[0-9a-f]{64}$/i.test(body.photoUploadToken || '')) return {
     action: 'result', photo_error: { stage: 'create', code: 'missing_upload_capability' },
   };
-  const safeName = (metadata.fileName || 'foto').normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100) || 'foto';
-  // Reintentar el mismo evento usa el mismo pathname; el token habilita overwrite.
-  const pathname = `reports/${body.id}/${body.id}-${safeName}`;
   return {
-    action: 'upload', report_id: body.id, photoUploadToken: body.photoUploadToken,
-    pathname, form_photo_key: original.form_photo_key,
-    content_type: metadata.mimeType || 'application/octet-stream',
-    token_request: { type: 'blob.generate-client-token', payload: {
-      pathname, multipart: false,
-      clientPayload: JSON.stringify({ reportId: body.id, token: body.photoUploadToken, client: 'n8n' }),
-    } },
+    action: 'upload', report_id: body.id, photoUploadToken: body.photoUploadToken, form_photo_key: original.form_photo_key,
+    upload_request: {
+      reportId: body.id, token: body.photoUploadToken, filename: (metadata.fileName || 'foto').slice(-255),
+      contentType: (metadata.mimeType || 'application/octet-stream').split(';')[0].trim(), size: original.form_photo_size,
+    },
   };
 }
 
-function prepareBlobToken(response, upload) {
-  const clientToken = response.body?.clientToken;
-  if (response.statusCode !== 200 || response.body?.type !== 'blob.generate-client-token'
-      || typeof clientToken !== 'string' || !/^vercel_blob_client_[a-zA-Z0-9]+_/.test(clientToken)) return {
-    action: 'recheck', photo_error: { stage: 'authorize', status: response.statusCode || null, code: response.body?.error || 'invalid_upload_token' },
+function preparePhotoPut(response, upload) {
+  const presign = response.body;
+  if (response.statusCode !== 200 || presign?.method !== 'PUT' || typeof presign.url !== 'string' || !presign.url.startsWith('https://')
+      || typeof presign.key !== 'string' || !presign.key.startsWith(`reports/${upload.report_id}/`)
+      || typeof presign.headers !== 'object' || !presign.headers) return {
+    action: 'recheck', photo_error: { stage: 'authorize', status: response.statusCode || null, code: presign?.error || 'invalid_presign' },
   };
-  return { ...upload, clientToken, store_id: clientToken.split('_')[3] };
+  return { ...upload, key: presign.key, url: presign.url, headers: presign.headers };
 }
 
-function prepareBlobAttachment(response, upload) {
-  const blob = response.body;
-  const prefix = `https://${upload.store_id.toLowerCase()}.public.blob.vercel-storage.com/`;
-  if (![200, 201].includes(response.statusCode) || typeof blob?.url !== 'string'
-      || !blob.url.startsWith(prefix) || blob.pathname !== upload.pathname) return {
-    action: 'recheck', photo_error: { stage: 'upload', status: response.statusCode || null, code: 'invalid_blob_response' },
+function preparePhotoAttachment(response, upload) {
+  if (response.statusCode !== 200) return {
+    action: 'recheck', photo_error: { stage: 'upload', status: response.statusCode || null, code: 'upload_failed' },
   };
-  return { action: 'attach', report_id: upload.report_id, attachment: { token: upload.photoUploadToken, url: blob.url } };
+  return { action: 'attach', report_id: upload.report_id, attachment: { token: upload.photoUploadToken, key: upload.key } };
 }
 
 function formatFormResult(response, original, firstResponse, photoError) {
@@ -180,9 +173,9 @@ function prepareFormResults(items, readOutput) {
   if (!original?.report || !original.chat_id) throw new Error('Falta el contexto del reclamo. Reejecutá la ejecución original desde Telegram Trigger, conservando su mensaje.');
   return items.map((item, i) => {
     const saved = read('Guardar reporte') || read('Guardar reporte', 1);
-    const failure = read('Preparar binario Blob')?.photo_error || read('Preparar adjunto')?.photo_error;
+    const failure = read('Preparar PUT')?.photo_error || read('Preparar adjunto')?.photo_error;
     return { json: formatFormResult(item.json, original, saved, failure), pairedItem: { item: i } };
   });
 }
 
-module.exports = { prepareForm, prepareProvinces, parseFormResponse, validateLocality, validateFormPhoto, prepareBlobUpload, prepareBlobToken, prepareBlobAttachment, formatFormResult, prepareFormResults };
+module.exports = { prepareForm, prepareProvinces, parseFormResponse, validateLocality, validateFormPhoto, preparePhotoUpload, preparePhotoPut, preparePhotoAttachment, formatFormResult, prepareFormResults };

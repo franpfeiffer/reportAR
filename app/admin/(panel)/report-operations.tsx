@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { updateReport, type ReportChange } from "./actions";
 
 const AREAS = ["Servicios públicos", "Higiene urbana", "Alumbrado", "Arbolado y espacios verdes", "Obras y mantenimiento", "Defensa civil"];
 
@@ -20,17 +20,14 @@ export function ReportOperations({ id, assignedArea, dueAt }: { id: string; assi
   const [response, setResponse] = useState("");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
-  const router = useRouter();
 
   async function save(field: "assignedArea" | "dueAt" | "publicMessage", value: string | null) {
     setBusy(field); setMessage("");
     try {
-      const result = await fetch(`/api/admin/reports/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ [field]: value }) });
-      const data = await result.json() as { error?: string };
-      if (!result.ok) { setMessage(data.error || "No pudimos guardar el cambio."); return; }
+      const { error } = await updateReport(id, { [field]: value } as ReportChange);
+      if (error) { setMessage(error); return; }
       if (field === "publicMessage") setResponse("");
       setMessage(field === "publicMessage" ? "Respuesta publicada." : "Cambio guardado.");
-      router.refresh();
     } catch { setMessage("Revisá tu conexión e intentá nuevamente."); }
     finally { setBusy(""); }
   }

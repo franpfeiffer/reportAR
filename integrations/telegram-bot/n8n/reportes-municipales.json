@@ -394,7 +394,7 @@
       "parameters": {
         "width": 600,
         "height": 300,
-        "content": "## Endpoint autenticado\nEl nodo HTTP Request usa: POST con la base configurada en $vars.REPORTAR_BASE_URL y la ruta /api/bot/reports\nAutenticación: credencial Header Auth con Authorization: Bearer ...\nBody JSON: {{ $json.report }}\nHeader Idempotency-Key: {{ $json.report.external_id }}\n\nLa API guarda con external_id único y responde { id, status: \"received\", photo_status?: \"stored\" | \"failed\" }. Para el estado failed, el workflow reintenta dos veces con el mismo reporte y la misma clave.\n\nEl servidor descarga la foto de Telegram y la sube al bucket privado Neon. No enviar bytes de imagen en el body. La página pública de seguimiento entrega el archivo a través de reportAR."
+        "content": "## Endpoint autenticado\nEl nodo HTTP Request usa: POST con la base configurada en $vars.REPORTAR_BASE_URL y la ruta /api/bot/reports\nAutenticación: credencial Header Auth con Authorization: Bearer ...\nBody JSON: {{ $json.report }}\nHeader Idempotency-Key: {{ $json.report.external_id }}\n\nLa API guarda con external_id único y responde { id, status: \"received\", photo_status?: \"stored\" | \"failed\" }. Para el estado failed, el workflow reintenta dos veces con el mismo reporte y la misma clave.\n\nEl servidor descarga la foto de Telegram y la sube a R2. No enviar bytes de imagen en el body. GET /api/reports/{id}/photo entrega el archivo."
       }
     }
   ],

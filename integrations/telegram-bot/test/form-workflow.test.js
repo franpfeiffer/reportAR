@@ -16,7 +16,9 @@ const binary = { Foto: { data: bytes.toString('base64'), fileName: 'foto.heic', 
 const photo = f.validateLocality(localities, f.parseFormResponse({ data }, prepared.context, provinces, binary));
 const received = (photo_status, statusCode = 201) => ({ statusCode, body: { id, status: 'received', ...(photo_status ? { photo_status } : {}) } });
 const pending = { statusCode: 201, body: { ...received('pending').body, photoUploadToken: 'a'.repeat(64) } };
-const authorized = { statusCode: 200, body: { type: 'blob.generate-client-token', clientToken: 'vercel_blob_client_teststore_signed' } };
+const headers = { 'Content-Type': 'image/heic', 'Cache-Control': 'private, no-store' };
+const key = `reports/${id}/web-11111111-2222-4333-8444-555555555555-foto.heic`;
+const authorized = { statusCode: 200, body: { key, url: `https://acct.r2.cloudflarestorage.com/report-images/${key}?X-Amz-Signature=x`, method: 'PUT', headers } };
 const evaluate = (expression, json, lookup = {}) => vm.runInNewContext(expression.slice(3, -2).trim(), { $json: json, $: key => ({ first: () => lookup[key] }) });
 async function runCode(name, items, lookup = {}, helpers = {}) {
   return await vm.runInNewContext('(async function(){' + workflow.nodes.find(n => n.name === name).parameters.jsCode + '}).call({helpers})', {
@@ -59,21 +61,22 @@ test('usa un original de hasta 100 MiB del formulario; no procesa fotos por Tele
   assert.equal(workflow.nodes.some(n => n.parameters.operation === 'sendPhoto'), false);
   assert.doesNotMatch(JSON.stringify(workflow.nodes.filter(n => n.type !== 'n8n-nodes-base.stickyNote')), /getFile|telegram_file_id|AWS_ACCESS_KEY_ID/);
 });
-test('crea ID → autorización normal → Blob → adjunto normal; reintento conserva pathname', () => {
-  const upload = f.prepareBlobUpload(pending, photo, binary.Foto);
+test('crea ID → URL firmada → PUT a R2 → adjunto con {token,key}', () => {
+  const sized = { ...photo, form_photo_size: bytes.length };
+  const upload = f.preparePhotoUpload(pending, sized, binary.Foto);
   assert.equal(upload.action, 'upload');
-  assert.equal(upload.pathname, `reports/${id}/${id}-foto.heic`);
-  assert.deepEqual(JSON.parse(upload.token_request.payload.clientPayload), { reportId: id, token: 'a'.repeat(64), client: 'n8n' });
-  assert.equal(f.prepareBlobUpload({ ...pending, statusCode: 200 }, photo, binary.Foto).pathname, upload.pathname);
-  assert.equal(f.prepareBlobUpload(received('stored', 200), photo).action, 'result');
-  assert.equal(f.prepareBlobUpload(received(), original).action, 'result');
-  assert.equal(f.prepareBlobUpload(received('pending'), photo).action, 'result');
-  const token = f.prepareBlobToken(authorized, upload);
-  assert.equal(token.store_id, 'teststore');
-  assert.equal(f.prepareBlobToken({ statusCode: 401, body: { error: 'unauthorized' } }, upload).action, 'recheck');
-  const response = { statusCode: 200, body: { url: `https://teststore.public.blob.vercel-storage.com/${upload.pathname}`, pathname: upload.pathname } };
-  assert.deepEqual(f.prepareBlobAttachment(response, token).attachment, { token: 'a'.repeat(64), url: response.body.url });
-  assert.equal(f.prepareBlobAttachment({ ...response, body: { ...response.body, url: 'https://elsewhere.test/photo' } }, token).action, 'recheck');
+  assert.deepEqual(upload.upload_request, { reportId: id, token: 'a'.repeat(64), filename: 'foto.heic', contentType: 'image/heic', size: bytes.length });
+  assert.equal(f.preparePhotoUpload(received('stored', 200), photo).action, 'result');
+  assert.equal(f.preparePhotoUpload(received(), original).action, 'result');
+  assert.equal(f.preparePhotoUpload(received('pending'), photo).action, 'result');
+  const put = f.preparePhotoPut(authorized, upload);
+  assert.equal(put.url, authorized.body.url);
+  assert.deepEqual(put.headers, headers);
+  assert.equal(f.preparePhotoPut({ statusCode: 403, body: { error: 'No se puede adjuntar la foto a este reporte.' } }, upload).action, 'recheck');
+  assert.equal(f.preparePhotoPut({ ...authorized, body: { ...authorized.body, key: 'reports/otro/web-x' } }, upload).action, 'recheck');
+  assert.deepEqual(f.preparePhotoAttachment({ statusCode: 200, body: '' }, put).attachment, { token: 'a'.repeat(64), key });
+  assert.equal(f.preparePhotoAttachment({ statusCode: 403, body: '' }, put).action, 'recheck');
+  assert.equal(f.preparePhotoAttachment({ error: { code: 'ETIMEDOUT' } }, put).action, 'recheck');
 });
 test('confirma texto, foto guardada o fallo parcial; auth inválida y errores no confirman', () => {
   assert.equal(f.formatFormResult(received(), original).confirmed, true);
@@ -101,11 +104,13 @@ test('ejecuta Code exportado con binario del formulario hasta confirmación de a
   const located = await run('Validar localidad', { json: localities });
   await run('Revisar foto', located, { getBinaryDataBuffer: async () => bytes });
   lookup['Guardar reporte'] = { json: pending };
-  const upload = await run('Preparar carga Blob', { json: pending });
-  const token = await run('Preparar binario Blob', { json: authorized });
-  assert.equal(token.binary.Foto.data, binary.Foto.data);
-  assert.equal(token.binary.Foto.fileName, binary.Foto.fileName);
-  await run('Preparar adjunto', { json: { statusCode: 200, body: { pathname: upload.json.pathname, url: `https://teststore.public.blob.vercel-storage.com/${upload.json.pathname}` } } });
+  const upload = await run('Preparar subida', { json: pending });
+  assert.equal(upload.json.upload_request.size, bytes.length);
+  const put = await run('Preparar PUT', { json: authorized });
+  assert.equal(put.binary.Foto.data, binary.Foto.data);
+  assert.equal(put.binary.Foto.fileName, binary.Foto.fileName);
+  const attach = await run('Preparar adjunto', { json: { statusCode: 200, body: '' } });
+  assert.equal(attach.json.attachment.key, key);
   const result = await run('Preparar resultado', { json: { statusCode: 200, body: { ok: true } } });
   assert.equal(result.json.confirmed, true);
   assert.equal(result.json.photo_status, 'stored');
@@ -131,7 +136,11 @@ test('HTTP conserva body, clave y archivo en hasta tres intentos; export inactiv
     assert.equal(node.maxTries, 3);
     assert.equal(workflow.connections[node.name].main[1].length, 1);
   }
-  assert.equal(workflow.nodes.find(n => n.id === 'photo-put').parameters.contentType, 'binaryData');
+  const putNode = workflow.nodes.find(n => n.id === 'photo-put');
+  assert.equal(putNode.parameters.contentType, 'binaryData');
+  assert.equal(evaluate(putNode.parameters.url, { url: authorized.body.url }), authorized.body.url);
+  assert.deepEqual(JSON.parse(evaluate(putNode.parameters.jsonHeaders, { headers })), headers);
+  assert.doesNotMatch(JSON.stringify(workflow), /vercel|blob\./i);
   assert.equal(workflow.active, false);
   assert.doesNotMatch(JSON.stringify(workflow), /Bearer\s+[a-zA-Z0-9_-]{24,}|\$vars/);
   const names = new Set(workflow.nodes.map(n => n.name));
