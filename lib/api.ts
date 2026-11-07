@@ -107,6 +107,6 @@ export async function getPublicEvents(id: string): Promise<PublicReportEvent[] |
   }
 }
 
-export function photoUrl(id: string) {
-  return new URL(`/api/reports/${encodeURIComponent(id)}/photo`, process.env.REPORTAR_API_URL).href;
+export function photoUrl(id: string, thumb = false) {
+  return new URL(`/api/reports/${encodeURIComponent(id)}/photo${thumb ? "?thumb" : ""}`, process.env.REPORTAR_API_URL).href;
 }

@@ -98,7 +98,7 @@ function ReportRow({ report, href, now }: { report: AdminReport; href: string; n
         <div className="flex min-w-0 items-center gap-3">
           {report.hasPhoto && !report.hidden
             // eslint-disable-next-line @next/next/no-img-element -- photos come from the API host, not next/image domains
-            ? <img src={photoUrl(report.publicId)} alt="" loading="lazy" className="size-10 shrink-0 rounded-md border border-line object-cover" />
+            ? <img src={photoUrl(report.publicId, true)} alt="" loading="lazy" className="size-10 shrink-0 rounded-md border border-line object-cover" />
             : <span aria-hidden="true" className="size-10 shrink-0 rounded-md border border-dashed border-line" />}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{categoryLabels[report.category]}</p>
