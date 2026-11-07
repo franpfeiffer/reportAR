@@ -22,6 +22,9 @@ export type AdminReport = {
   createdAt: string;
   updatedAt: string;
   hasPhoto: boolean;
+  flagCount: number;
+  hidden: boolean;
+  hiddenReason: "AUTO_FLAGS" | "ADMIN" | null;
 };
 
 export type AdminDashboard = {

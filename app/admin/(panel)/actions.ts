@@ -9,7 +9,8 @@ export type ReportChange =
   | { urgency: Urgency }
   | { assignedArea: string | null }
   | { dueAt: string | null }
-  | { publicMessage: string };
+  | { publicMessage: string }
+  | { hidden: boolean };
 
 // Admin authorization and validation happen in the Go API with the caller's own token.
 export async function updateReport(id: string, change: ReportChange): Promise<{ error?: string }> {
@@ -22,6 +23,20 @@ export async function updateReport(id: string, change: ReportChange): Promise<{ 
     if (!response.ok) {
       const data = await response.json().catch(() => null) as { error?: string } | null;
       return { error: data?.error || "No pudimos guardar el cambio." };
+    }
+  } catch {
+    return { error: "No pudimos conectar con el servidor. Intentá nuevamente." };
+  }
+  refresh();
+  return {};
+}
+
+export async function deleteReport(id: string): Promise<{ error?: string }> {
+  try {
+    const response = await adminFetch(`/api/admin/reports/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+      return { error: data?.error || "No pudimos eliminar el reclamo." };
     }
   } catch {
     return { error: "No pudimos conectar con el servidor. Intentá nuevamente." };
