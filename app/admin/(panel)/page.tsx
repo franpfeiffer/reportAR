@@ -1,35 +1,16 @@
 import Link from "next/link";
-import { Brand } from "@/components/brand";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ReportMap } from "@/components/report-map";
-import { StatusPill } from "@/components/status-pill";
-import { Button } from "@/components/ui/button";
-import { LogoutButton } from "./logout-button";
-import { ReportStatusControl } from "./report-status";
-import { ReportUrgencyReview } from "./report-urgency-review";
-import { categoryLabels, statusLabels, urgencyLabels, type Category, type ReportStatus, type Urgency } from "@/lib/labels";
-import { ReportOperations } from "./report-operations";
-import { ReportModeration } from "./report-moderation";
-import { getAdminDashboard } from "@/lib/api";
+import { ReportBadges, StatusPill, formatDate } from "@/components/status-pill";
+import { categoryLabels } from "@/lib/labels";
+import { adminFilters, getAdminDashboard, pageNumber, photoUrl, type AdminReport } from "@/lib/api";
+import { ReportFilters } from "./report-filters";
 
 export const instant = false;
 
-export default async function AdminDashboard({ searchParams }: { searchParams: Promise<{ page?: string; status?: string; urgency?: string; review?: string; category?: string; area?: string; moderation?: string }> }) {
+export default async function AdminDashboard({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const query = await searchParams;
-  const page = Math.max(1, Math.min(10000, Number.parseInt(query.page || "1", 10) || 1));
-  const status = query.status && Object.hasOwn(statusLabels, query.status) ? query.status as ReportStatus : undefined;
-  const urgency = query.urgency && Object.hasOwn(urgencyLabels, query.urgency) ? query.urgency as Urgency : undefined;
-  const category = query.category && Object.hasOwn(categoryLabels, query.category) ? query.category as Category : undefined;
-  const area = typeof query.area === "string" ? query.area.trim().slice(0, 100) : "";
-  const reviewPending = query.review === "pending";
-  const moderation = query.moderation === "flagged" || query.moderation === "hidden" ? query.moderation : "";
-  const filters = new URLSearchParams();
-  if (status) filters.set("status", status);
-  if (urgency) filters.set("urgency", urgency);
-  if (category) filters.set("category", category);
-  if (area) filters.set("area", area);
-  if (reviewPending) filters.set("review", "pending");
-  if (moderation) filters.set("moderation", moderation);
+  const page = pageNumber(query);
+  const filters = adminFilters(query);
   const { metrics, categoryTotals, hotMunicipalities, reports, hasNextPage } = await getAdminDashboard(new URLSearchParams([...filters, ["page", String(page)]]));
   const now = new Date();
   const points = reports.flatMap(r => r.latitude !== null && r.longitude !== null
@@ -38,36 +19,118 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
   const filterString = filters.toString();
   const pageUrl = (n: number) => `/admin?page=${n}${filterString ? `&${filterString}` : ""}`;
   const exportUrl = `/admin/export${filterString ? `?${filterString}` : ""}`;
+  // The detail page reuses the list query to find the report and to link back to the same view.
+  const listQuery = new URLSearchParams([...filters, ...(page > 1 ? [["page", String(page)]] : [])]).toString();
+  const detailUrl = (id: string) => `/admin/reports/${encodeURIComponent(id)}${listQuery ? `?${listQuery}` : ""}`;
+  const count = (n: number) => n.toLocaleString("es-AR");
+
+  const stats: { label: string; value: string; alert?: boolean }[] = [
+    { label: "Reportes totales", value: count(metrics.total) },
+    { label: "Pendientes", value: count(metrics.pending) },
+    { label: "Urgentes abiertos", value: count(metrics.urgent), alert: metrics.urgent > 0 },
+    { label: "Fuera de plazo", value: count(metrics.overdue), alert: metrics.overdue > 0 },
+    { label: "Promedio hasta resolver", value: metrics.averageResolutionDays ? `${metrics.averageResolutionDays.toLocaleString("es-AR", { maximumFractionDigits: 1 })} días` : "—" },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#F1F5F2]">
-      <header className="bg-[#14433F] text-white"><div className="site-shell flex min-h-20 flex-wrap items-center justify-between gap-4 py-3"><Brand inverse /><div className="flex items-center gap-3 sm:gap-5"><ThemeToggle inverse /><span className="hidden text-sm text-[#C5E0D4] sm:inline">Panel municipal</span><LogoutButton /></div></div></header>
-      <main className="site-shell py-10 sm:py-14">
-        <div className="flex flex-wrap items-end justify-between gap-6"><div><h1 className="page-title">Reclamos de la comunidad.</h1><p className="body-lead mt-4 max-w-2xl">Revisá cada situación, ubicala en el mapa y mantené actualizado su estado.</p></div><span className="rounded-full bg-[#DCECE5] px-4 py-2 text-sm font-semibold text-[#116D63]">{reports.length} en esta página</span></div>
+    <main className="admin-shell py-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-[-.02em]">Reclamos</h1>
+          <p className="text-sm text-muted">Más recientes primero</p>
+        </div>
+        <a href={exportUrl} className="inline-flex h-9 items-center rounded-md border border-line bg-paper px-3 text-sm font-semibold hover:bg-mist">Exportar CSV</a>
+      </div>
 
-        <section className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Indicadores municipales">{[
-          ["Reportes totales", metrics.total.toLocaleString("es-AR"), "bg-white"],
-          ["Pendientes", metrics.pending.toLocaleString("es-AR"), "bg-white"],
-          ["Urgentes abiertos", metrics.urgent.toLocaleString("es-AR"), "bg-[#FFF4E9]"],
-          ["Fuera de plazo", metrics.overdue.toLocaleString("es-AR"), metrics.overdue ? "bg-[#FFEAE4] text-[#9D382B]" : "bg-white"],
-          ["Promedio hasta resolver", metrics.averageResolutionDays ? `${metrics.averageResolutionDays.toLocaleString("es-AR", { maximumFractionDigits: 1 })} días` : "—", "bg-white"],
-        ].map(([label, value, style]) => <div key={label} className={`surface px-5 py-4 ${style}`}><p className="text-xs font-semibold text-[#5B746F]">{label}</p><p className="mt-2 text-2xl font-bold tracking-[-.04em]">{value}</p></div>)}</section>
-        <section className="mt-4 grid gap-4 lg:grid-cols-2" aria-label="Resumen de incidentes"><div className="surface p-5"><h2 className="font-bold">Categorías más reportadas</h2><ol className="mt-3 grid gap-2">{categoryTotals.map(item => <li key={item.category} className="flex justify-between gap-4 text-sm"><span>{categoryLabels[item.category]}</span><strong>{item.total.toLocaleString("es-AR")}</strong></li>)}</ol></div><div className="surface p-5"><h2 className="font-bold">Municipios con más reportes</h2><ol className="mt-3 grid gap-2">{hotMunicipalities.length ? hotMunicipalities.map((item, i) => <li key={`${item.name}-${i}`} className="flex justify-between gap-4 text-sm"><span>{item.name}</span><strong>{item.total.toLocaleString("es-AR")}</strong></li>) : <li className="text-sm text-[#5B746F]">Todavía no hay ubicaciones identificadas.</li>}</ol></div></section>
+      <section aria-label="Indicadores municipales" className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-5">
+        {stats.map(stat => (
+          <div key={stat.label} className="bg-paper px-4 py-3 last:col-span-2 md:last:col-span-1">
+            <p className="text-xs font-medium text-muted">{stat.label}</p>
+            <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-[-.02em] ${stat.alert ? "text-danger" : ""}`}>{stat.value}</p>
+          </div>
+        ))}
+      </section>
 
-        <section className="mt-8" aria-label="Filtros de reclamos"><form action="/admin" className="flex flex-wrap items-end gap-3"><div><label htmlFor="status" className="form-label">Estado del reporte</label><select id="status" name="status" defaultValue={status || ""} className="field-control min-w-48"><option value="">Todos los estados</option>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div><div><label htmlFor="urgency" className="form-label">Urgencia</label><select id="urgency" name="urgency" defaultValue={urgency || ""} className="field-control min-w-48"><option value="">Todas las urgencias</option>{Object.entries(urgencyLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div><div><label htmlFor="category" className="form-label">Categoría</label><select id="category" name="category" defaultValue={category || ""} className="field-control min-w-48"><option value="">Todas</option>{Object.entries(categoryLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div><div><label htmlFor="area" className="form-label">Área responsable</label><input id="area" name="area" defaultValue={area} maxLength={100} placeholder="Todas las áreas" className="field-control min-w-48" /></div><div><label htmlFor="review" className="form-label">Revisión</label><select id="review" name="review" defaultValue={reviewPending ? "pending" : ""} className="field-control min-w-48"><option value="">Todos</option><option value="pending">Urgencia pendiente</option></select></div><div><label htmlFor="moderation" className="form-label">Moderación</label><select id="moderation" name="moderation" defaultValue={moderation} className="field-control min-w-48"><option value="">Todos</option><option value="flagged">Denunciados</option><option value="hidden">Ocultos</option></select></div><Button type="submit" className="h-[3.3rem] rounded-lg px-5">Aplicar filtro</Button>{(status || urgency || category || area || reviewPending || moderation) && <Link href="/admin" className="civic-link mb-3 text-sm">Limpiar filtros</Link>}<a href={exportUrl} className="civic-button civic-button-outline mb-0.5">Exportar CSV</a></form></section>
+      <div className="mt-4"><ReportFilters key={filterString} values={Object.fromEntries(filters)} /></div>
 
-        {points.length > 0 && <section className="mt-9" aria-label="Mapa de reclamos"><div className="mb-4 flex items-baseline justify-between gap-3"><h2 className="section-title">En el mapa</h2><span className="text-sm text-[#5B746F]">{points.length} con ubicación en esta página</span></div><ReportMap points={points} /></section>}
-
-        <section className="surface mt-9 overflow-hidden" aria-label="Lista de reclamos">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-[#CBDCD4] px-6 py-5 sm:px-8"><h2 className="text-xl font-bold tracking-[-.035em]">Bandeja de reclamos</h2><p className="text-sm text-[#5B746F]">Más recientes primero</p></div>
-          {reports.length === 0 ? <div className="px-6 py-14 sm:px-8"><h3 className="text-xl font-bold">No hay reclamos para mostrar.</h3><p className="mt-2 text-[#5B746F]">Probá otro estado para ver el resto de los reportes.</p><Link href="/admin" className="civic-link mt-5 inline-block">Ver todos los estados</Link></div>
-          : reports.map(report => <article key={report.publicId} className="grid gap-5 border-b border-[#CBDCD4] px-6 py-7 last:border-b-0 sm:px-8 lg:grid-cols-[minmax(0,1fr)_14rem] lg:gap-8">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><StatusPill status={report.status} /><span className="text-sm text-[#5B746F]">{report.source === "TELEGRAM" ? "Telegram" : "Formulario web"}</span>{report.urgency && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${report.urgency === "URGENTE" ? "bg-[#FFEAE4] text-[#9D382B]" : "bg-[#DCECE5] text-[#116D63]"}`}>{urgencyLabels[report.urgency]}</span>}{(report.urgencyClassificationStatus === "NEEDS_REVIEW" || report.urgencyClassificationStatus === "UNAVAILABLE") && <span className="rounded-full bg-[#FFF1CE] px-3 py-1 text-xs font-semibold text-[#7A4B00]">Revisar urgencia</span>}{report.flagCount > 0 && <span className="rounded-full bg-[#FFF1CE] px-3 py-1 text-xs font-semibold text-[#7A4B00]">{report.flagCount === 1 ? "1 denuncia" : `${report.flagCount} denuncias`}</span>}{report.hidden && <span className="rounded-full bg-[#FFEAE4] px-3 py-1 text-xs font-semibold text-[#9D382B]" title={report.hiddenReason === "AUTO_FLAGS" ? "Oculto automáticamente por denuncias" : "Oculto por el municipio"}>Oculto</span>}</div><h3 className="mt-4 text-xl font-bold tracking-[-.03em]">{categoryLabels[report.category]}</h3><p className="mt-1 font-medium text-[#42615B]">{report.address}</p>{report.assignedArea && <p className="mt-2 text-sm text-[#5B746F]">Área: <strong>{report.assignedArea}</strong></p>}{report.dueAt && <p className={`mt-2 text-sm font-semibold ${report.status !== "RESUELTO" && new Date(report.dueAt) < now ? "text-[#A43E30]" : "text-[#5B746F]"}`}>{report.status !== "RESUELTO" && new Date(report.dueAt) < now ? "Fuera de plazo · " : "Plazo sugerido · "}{new Date(report.dueAt).toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Argentina/Buenos_Aires" })}</p>}{(report.urgencyClassificationStatus === "NEEDS_REVIEW" || report.urgencyClassificationStatus === "UNAVAILABLE") && <div className="mt-3 rounded-lg border border-[#E8D6A6] bg-[#FFF9E9] p-3 text-sm text-[#684A14]"><p className="font-semibold">Revisión de urgencia pendiente</p>{report.suggestedUrgency ? <p className="mt-1">JEV sugiere {urgencyLabels[report.suggestedUrgency].toLowerCase()}. Probabilidad de que requiera reparación urgente: {Math.round((report.urgentProbability ?? 0) * 100)}%.</p> : report.urgencyClassificationStatus === "UNAVAILABLE" ? <p className="mt-1">JEV no estuvo disponible. La categoría del reporte se conserva; asigná la urgencia manualmente.</p> : <p className="mt-1">Este reporte todavía no tiene una evaluación de urgencia.</p>}</div>}{report.urgencyClassificationStatus === "AUTO_ASSIGNED" && report.urgentProbability !== null && <p className="mt-2 text-sm text-[#5B746F]">Probabilidad de urgencia: {Math.round(report.urgentProbability * 100)}%.</p>}<p className="mt-4 line-clamp-3 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-[#4E6A63]">{report.description}</p>{report.hasPhoto && <a href={new URL(`/api/reports/${report.publicId}/photo`, process.env.REPORTAR_API_URL).href} target="_blank" rel="noreferrer" className="civic-link mt-4 inline-flex text-sm">Ver foto</a>}</div>
-              <div className="flex flex-col gap-5 border-t border-[#CBDCD4] pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0"><time className="text-sm text-[#5B746F]" dateTime={report.createdAt}>{new Date(report.createdAt).toLocaleDateString("es-AR", { dateStyle: "medium", timeZone: "America/Argentina/Buenos_Aires" })}</time><ReportUrgencyReview id={report.publicId} urgency={report.urgency} suggestedUrgency={report.suggestedUrgency} urgencyClassificationStatus={report.urgencyClassificationStatus} /><ReportStatusControl id={report.publicId} status={report.status} /><ReportOperations id={report.publicId} assignedArea={report.assignedArea} dueAt={report.dueAt} /><ReportModeration id={report.publicId} hidden={report.hidden} /></div>
-            </article>)}
+      <div className="mt-4 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <section aria-label="Lista de reclamos" className="surface overflow-hidden">
+          {reports.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <p className="font-semibold">No hay reclamos para mostrar.</p>
+              <p className="mt-1 text-sm text-muted">Probá con otros filtros.</p>
+              {filterString && <Link href="/admin" className="civic-link mt-3 inline-block text-sm">Ver todos los reclamos</Link>}
+            </div>
+          ) : <>
+            <div aria-hidden="true" className="hidden border-b border-line bg-paper-soft px-4 py-2 text-xs font-semibold text-muted md:grid md:grid-cols-[7.5rem_minmax(0,1fr)_11rem_6.5rem] md:gap-4 lg:grid-cols-[7.5rem_minmax(0,1fr)_11rem_10rem_6.5rem]">
+              <span>Estado</span><span>Reclamo</span><span>Urgencia</span><span className="hidden lg:block">Área y plazo</span><span className="text-right">Fecha</span>
+            </div>
+            <ul>{reports.map(report => <ReportRow key={report.publicId} report={report} href={detailUrl(report.publicId)} now={now} />)}</ul>
+          </>}
+          <nav aria-label="Páginas de reclamos" className="flex items-center justify-between gap-4 border-t border-line px-4 py-2.5 text-sm">
+            <div className="min-w-24">{page > 1 && <Link href={pageUrl(page - 1)} className="civic-link">← Anterior</Link>}</div>
+            <span className="text-muted">Página {page} · {reports.length} reclamos</span>
+            <div className="min-w-24 text-right">{hasNextPage && <Link href={pageUrl(page + 1)} className="civic-link">Siguiente →</Link>}</div>
+          </nav>
         </section>
-        <nav aria-label="Páginas de reclamos" className="mt-7 flex items-center justify-between gap-4 text-sm"><div>{page > 1 && <Link href={pageUrl(page - 1)} className="civic-link">Página anterior</Link>}</div><span className="text-[#5B746F]">Página {page}</span><div>{hasNextPage && <Link href={pageUrl(page + 1)} className="civic-link">Página siguiente</Link>}</div></nav>
-      </main>
-    </div>
+
+        <aside className="grid gap-4 md:grid-cols-2 xl:sticky xl:top-4 xl:grid-cols-1">
+          {points.length > 0 && (
+            <section aria-label="Mapa de reclamos" className="surface p-3 md:col-span-2 xl:col-span-1">
+              <div className="mb-2 flex items-baseline justify-between gap-2 px-1"><h2 className="surface-title">Mapa</h2><span className="text-xs text-muted">{points.length} con ubicación en esta página</span></div>
+              <ReportMap points={points} className="!h-64" />
+            </section>
+          )}
+          <TopList title="Categorías más reportadas" items={categoryTotals.map(item => ({ name: categoryLabels[item.category], total: item.total }))} empty="Todavía no hay reportes." />
+          <TopList title="Municipios con más reportes" items={hotMunicipalities} empty="Todavía no hay ubicaciones identificadas." />
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+function ReportRow({ report, href, now }: { report: AdminReport; href: string; now: Date }) {
+  const overdue = report.dueAt !== null && report.status !== "RESUELTO" && new Date(report.dueAt) < now;
+  return (
+    <li className="border-b border-line last:border-b-0">
+      <Link href={href} className="grid gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-paper-soft md:grid-cols-[7.5rem_minmax(0,1fr)_11rem_6.5rem] md:items-center lg:grid-cols-[7.5rem_minmax(0,1fr)_11rem_10rem_6.5rem]">
+        <div><StatusPill status={report.status} /></div>
+        <div className="flex min-w-0 items-center gap-3">
+          {report.hasPhoto && !report.hidden
+            // eslint-disable-next-line @next/next/no-img-element -- photos come from the API host, not next/image domains
+            ? <img src={photoUrl(report.publicId)} alt="" loading="lazy" className="size-10 shrink-0 rounded-md border border-line object-cover" />
+            : <span aria-hidden="true" className="size-10 shrink-0 rounded-md border border-dashed border-line" />}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{categoryLabels[report.category]}</p>
+            <p className="truncate text-sm text-muted">{report.address}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1"><ReportBadges report={report} /></div>
+        <div className="hidden min-w-0 text-xs lg:block">
+          <p className="truncate">{report.assignedArea ?? <span className="text-muted">Sin asignar</span>}</p>
+          {report.dueAt && <p className={overdue ? "font-semibold text-danger" : "text-muted"}>{overdue ? "Venció" : "Vence"} {formatDate(report.dueAt)}</p>}
+        </div>
+        <time dateTime={report.createdAt} className="text-xs text-muted tabular-nums md:text-right">{formatDate(report.createdAt)}</time>
+      </Link>
+    </li>
+  );
+}
+
+function TopList({ title, items, empty }: { title: string; items: { name: string; total: number }[]; empty: string }) {
+  const max = Math.max(1, ...items.map(item => item.total));
+  return (
+    <section className="surface p-4">
+      <h2 className="surface-title">{title}</h2>
+      {items.length ? (
+        <ol className="mt-3 grid gap-2">
+          {items.map((item, i) => (
+            <li key={`${item.name}-${i}`} className="text-sm">
+              <div className="flex justify-between gap-3"><span className="truncate">{item.name}</span><strong className="tabular-nums">{item.total.toLocaleString("es-AR")}</strong></div>
+              <div className="mt-1 h-1 rounded-full bg-mist"><div className="h-1 rounded-full bg-teal" style={{ width: `${(item.total / max) * 100}%` }} /></div>
+            </li>
+          ))}
+        </ol>
+      ) : <p className="mt-3 text-sm text-muted">{empty}</p>}
+    </section>
   );
 }

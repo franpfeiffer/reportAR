@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { redirect } from "next/navigation";
 import { adminFetch } from "@/lib/api";
 import type { ReportStatus, Urgency } from "@/lib/labels";
 
@@ -41,6 +42,5 @@ export async function deleteReport(id: string): Promise<{ error?: string }> {
   } catch {
     return { error: "No pudimos conectar con el servidor. Intentá nuevamente." };
   }
-  refresh();
-  return {};
+  redirect("/admin");
 }
