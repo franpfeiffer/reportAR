@@ -17,6 +17,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
       <footer className="site-footer">
         <div className="site-shell flex flex-wrap gap-6 py-6 text-sm">
           <Link href="/privacidad">Privacidad</Link>
+          <Link href="/terminos">Condiciones de uso</Link>
           <Link href="/soporte">Soporte</Link>
         </div>
       </footer>
