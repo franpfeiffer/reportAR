@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: "Qué datos usa ReportAR, para qué y cómo pedir que se borren.",
 };
 
-const UPDATED = "7 de noviembre de 2026";
+const UPDATED = "11 de noviembre de 2026";
 
 export default function PrivacyPage() {
   const mail = <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
@@ -80,8 +80,11 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>OpenStreetMap (Nominatim):</strong> recibe la dirección o las coordenadas que buscás, a través
-          de nuestro servidor. Los mapas de la app de Android se descargan de OpenStreetMap, y los de iPhone de
-          Apple Maps.
+          de nuestro servidor.
+        </li>
+        <li>
+          <strong>Instituto Geográfico Nacional (Argenmap):</strong> los mapas de la app y del sitio se descargan
+          de sus servidores, que reciben la zona del mapa que estás mirando.
         </li>
         <li>
           <strong>Proveedores de infraestructura:</strong> Neon (base de datos en Brasil y almacenamiento de fotos

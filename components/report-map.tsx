@@ -11,7 +11,11 @@ export function ReportMap({ points, className = "" }: { points: MapPoint[]; clas
     import("leaflet").then(L => {
       if (disposed || !container.current || !points.length) return;
       const map = L.map(container.current, { scrollWheelZoom: false });
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+      // Argenmap (IGN) is TMS; its dark layer follows the site theme.
+      const tilesUrl = () => `https://wms.ign.gob.ar/geoserver/gwc/service/tms/1.0.0/${document.documentElement.dataset.theme === "dark" ? "argenmap_oscuro" : "capabaseargenmap"}@EPSG%3A3857@png/{z}/{x}/{y}.png`;
+      const tiles = L.tileLayer(tilesUrl(), { tms: true, maxZoom: 18, attribution: '<a href="https://www.ign.gob.ar/">Argenmap - IGN</a>' }).addTo(map);
+      const theme = new MutationObserver(() => tiles.setUrl(tilesUrl()));
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
       for (const point of points) {
         const marker = L.circleMarker([point.latitude, point.longitude], { radius: 7, weight: 2, color: "#ffffff", fillColor: "#116d63", fillOpacity: 0.95 }).addTo(map);
         if (point.label) { const label = document.createElement("span"); label.textContent = point.label; marker.bindTooltip(label); }
@@ -24,7 +28,7 @@ export function ReportMap({ points, className = "" }: { points: MapPoint[]; clas
       fit();
       const resize = new ResizeObserver(fit);
       resize.observe(container.current);
-      cleanup = () => { resize.disconnect(); map.remove(); };
+      cleanup = () => { resize.disconnect(); theme.disconnect(); map.remove(); };
     }).catch(() => undefined);
     return () => { disposed = true; cleanup?.(); };
   }, [points]);
